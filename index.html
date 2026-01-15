@@ -66,9 +66,16 @@
 
         // --- Firebase Configuration & Init ---
         // Safety check for local execution where __firebase_config might not be defined
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : { apiKey: "dummy", authDomain: "dummy", projectId: "dummy" }; 
+       const firebaseConfig = {
+  apiKey: "AIzaSyDKNyqJCEbI5uCSUc4ws7dKuyBZA2lRaOA",
+  authDomain: "kevinwork-eb7cc.firebaseapp.com",
+  databaseURL: "https://kevinwork-eb7cc-default-rtdb.firebaseio.com",
+  projectId: "kevinwork-eb7cc",
+  storageBucket: "kevinwork-eb7cc.firebasestorage.app",
+  messagingSenderId: "462117666080",
+  appId: "1:462117666080:web:4289c00cc5144f98f6eb45",
+  measurementId: "G-2DRK1D06QE"
+};
             
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -1376,4 +1383,5 @@
 
     </script>
 </body>
+
 </html>
