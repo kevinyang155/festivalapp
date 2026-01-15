@@ -1,1394 +1,988 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Calendar, Clock, Music, MapPin, Heart, Plus, Save, Upload, Download, AlertCircle, CheckCircle, List, ArrowRight, Sparkles, X, Loader2, Image as ImageIcon, MessageSquare, ChevronDown, ChevronUp, Layers, LayoutGrid, Edit, Trash2, History, RotateCcw, FolderOpen, Mic2, Ticket, Check, AlertTriangle, LogOut, User, Settings, Key } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Festival Planner (音樂祭排程助手)</title>
+    
+    <!-- 1. 載入 Tailwind CSS (樣式庫) -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-// --- Firebase Imports ---
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-import { 
-  getAuth, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  signInAnonymously, 
-  signOut, 
-  onAuthStateChanged 
-} from "firebase/auth";
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, // 新增 getDoc
-  deleteDoc, 
-  onSnapshot, 
-  query 
-} from "firebase/firestore";
-
-// --- Firebase Configuration ---
-const firebaseConfig = {
-  apiKey: "AIzaSyDKNyqJCEbI5uCSUc4ws7dKuyBZA2lRaOA",
-  authDomain: "kevinwork-eb7cc.firebaseapp.com",
-  databaseURL: "https://kevinwork-eb7cc-default-rtdb.firebaseio.com",
-  projectId: "kevinwork-eb7cc",
-  storageBucket: "kevinwork-eb7cc.firebasestorage.app",
-  messagingSenderId: "462117666080",
-  appId: "1:462117666080:web:4289c00cc5144f98f6eb45",
-  measurementId: "G-2DRK1D06QE"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-// Use a fixed app ID for path consistency in this specific tool
-const APP_ID = 'festival-planner-v1';
-
-// --- Gemini API Helper ---
-// Updated to accept a user-provided key
-const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
-  const envApiKey = ""; // System provides this at runtime usually, but we prioritize userApiKey if enforced
-  const apiKey = userApiKey || envApiKey;
-
-  if (!apiKey) {
-    throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
-  }
-
-  const model = "gemini-2.5-flash-preview-09-2025";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  const contents = [
+    <!-- 2. 設定 Import Map (告訴瀏覽器去哪裡抓 React 和 Firebase 套件) -->
+    <script type="importmap">
     {
-      parts: [
-        { text: prompt },
-        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
-      ]
-    }
-  ];
-
-  const payload = {
-    contents,
-    generationConfig: {
-      responseMimeType: "application/json"
-    },
-    systemInstruction: {
-      parts: [{ text: systemPrompt }]
-    }
-  };
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-       const errorData = await response.json().catch(() => ({}));
-       throw new Error(`API Error: ${response.status} ${errorData.error?.message || ''}`);
-    }
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("No content generated");
-    
-    return JSON.parse(text);
-  } catch (error) {
-    console.error("Gemini API Call Failed:", error);
-    throw error;
-  }
-};
-
-const DAYS = ['Day 1', 'Day 2', 'Day 3'];
-
-// --- Sub-components ---
-
-const Notification = ({ message, type, onClose }) => {
-  if (!message) return null;
-  
-  const bgColor = type === 'success' ? 'bg-green-600' : 'bg-red-600';
-  const icon = type === 'success' ? <Check size={18} /> : <AlertTriangle size={18} />;
-
-  return (
-    <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-white font-medium animate-in slide-in-from-top-2 fade-in duration-300 ${bgColor}`}>
-      {icon}
-      <span>{message}</span>
-      <button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100">
-        <X size={16} />
-      </button>
-    </div>
-  );
-};
-
-const SettingsModal = ({ isOpen, onClose, apiKey, onSave }) => {
-  const [keyInput, setKeyInput] = useState(apiKey);
-
-  useEffect(() => {
-    setKeyInput(apiKey);
-  }, [apiKey, isOpen]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
-      <div className="bg-slate-900 w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <Settings className="text-purple-500" /> 設定
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X size={24} />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-300 flex items-center gap-2">
-              <Key size={16} /> Gemini API Key
-            </label>
-            <input 
-              type="password" 
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="請輸入您的 API Key"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none"
-            />
-            <p className="text-xs text-slate-500">
-              需要設定金鑰才能使用 AI 圖片匯入與排程建議功能。
-            </p>
-          </div>
-
-          <button 
-            onClick={() => { onSave(keyInput); onClose(); }}
-            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition-colors"
-          >
-            儲存設定
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const AddPerformanceForm = ({ 
-  onAdd, 
-  onUpdate, 
-  onDelete, 
-  onCancel, 
-  editingItem, 
-  activeDay,
-  isOpen,
-  isInline = false
-}) => {
-  const [form, setForm] = useState({ artist: '', stage: '', day: activeDay, startTime: '', endTime: '' });
-
-  useEffect(() => {
-    if (editingItem) {
-      setForm(editingItem);
-    } else {
-      setForm({ artist: '', stage: '', day: activeDay, startTime: '', endTime: '' });
-    }
-  }, [editingItem, activeDay, isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.artist || !form.startTime) return;
-    
-    if (editingItem) {
-      onUpdate(form);
-    } else {
-      onAdd(form);
-    }
-  };
-
-  const handleDeleteClick = () => {
-    onDelete(editingItem.id);
-  };
-
-  return (
-    <form 
-      onSubmit={handleSubmit} 
-      className={`p-4 rounded-xl border space-y-4 animate-in slide-in-from-top-2 duration-300 ${
-        isInline 
-          ? 'bg-slate-900/80 border-purple-500/50 mt-2 mb-4 mx-2 shadow-inner' 
-          : 'bg-slate-800 border-slate-700 mb-6'
-      }`}
-    >
-      <div className="flex justify-between items-center">
-        <h3 className="font-semibold text-white flex items-center gap-2 text-sm">
-          {editingItem ? <Edit size={16} className="text-purple-400" /> : <Plus size={16} className="text-purple-400" />}
-          {editingItem ? '編輯此表演' : '新增表演詳細資訊'}
-        </h3>
-        {editingItem && (
-           <button type="button" onClick={onCancel} className="text-xs text-slate-400 hover:text-white underline">
-             取消
-           </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <input 
-          placeholder="藝人 / 樂團名稱" 
-          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:border-purple-500 outline-none text-sm"
-          value={form.artist}
-          onChange={e => setForm({...form, artist: e.target.value})}
-        />
-        <input 
-          placeholder="舞台名稱" 
-          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:border-purple-500 outline-none text-sm"
-          value={form.stage}
-          onChange={e => setForm({...form, stage: e.target.value})}
-        />
-        <div className="flex gap-2">
-           <select 
-            className="bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none text-sm cursor-pointer hover:border-purple-500 transition-colors"
-            value={form.day}
-            onChange={e => setForm({...form, day: e.target.value})}
-            title="修改天數以移動表演"
-          >
-            {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
-          <input 
-            type="time" 
-            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none text-sm"
-            value={form.startTime}
-            onChange={e => setForm({...form, startTime: e.target.value})}
-          />
-           <span className="self-center text-slate-500 text-sm">to</span>
-           <input 
-            type="time" 
-            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none text-sm"
-            value={form.endTime}
-            onChange={e => setForm({...form, endTime: e.target.value})}
-          />
-        </div>
-      </div>
-      
-      <div className="flex gap-3 pt-2">
-        {editingItem && (
-          <button 
-            type="button" 
-            onClick={handleDeleteClick}
-            className="px-4 py-2 rounded-lg transition-colors text-red-400 bg-slate-950 border border-red-900/30 hover:bg-red-900/20 text-sm font-medium flex items-center gap-1"
-          >
-            <Trash2 size={14} /> 刪除
-          </button>
-        )}
-        <button 
-          type="submit" 
-          className="flex-1 font-bold py-2 rounded-lg transition-colors text-white bg-purple-600 hover:bg-purple-500 text-sm"
-        >
-          {editingItem ? '儲存變更' : '新增至節目表'}
-        </button>
-      </div>
-    </form>
-  );
-};
-
-const App = () => {
-  // --- Auth State ---
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  // --- App State ---
-  const [view, setView] = useState('manage'); 
-  const [festivalName, setFestivalName] = useState('');
-  const [eventType, setEventType] = useState('festival'); 
-  const [startDate, setStartDate] = useState(''); 
-  const [endDate, setEndDate] = useState(''); 
-  const [performances, setPerformances] = useState([]);
-  const [mySchedule, setMySchedule] = useState([]); 
-  const [isAddFormOpen, setIsAddFormOpen] = useState(false); 
-  const [activeDay, setActiveDay] = useState('Day 1');
-  const [editingItem, setEditingItem] = useState(null); 
-  const [history, setHistory] = useState([]); 
-  const [notification, setNotification] = useState({ message: '', type: '' });
-  
-  // AI States
-  const [showAIModal, setShowAIModal] = useState(false);
-  const [aiMode, setAiMode] = useState('import'); 
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState('');
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [importDay, setImportDay] = useState('Day 1');
-  const fileInputRef = useRef(null);
-
-  // Settings State
-  const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-
-  // --- Helper: Check Whitelist in Firestore ---
-  const checkWhitelist = async (email) => {
-    if (!email) return false;
-    try {
-      const docRef = doc(db, "whitelist", email);
-      const docSnap = await getDoc(docRef);
-      return docSnap.exists();
-    } catch (error) {
-      console.error("Error checking whitelist:", error);
-      return false;
-    }
-  };
-
-  // --- Effects ---
-  
-  // Load API Key
-  useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) setApiKey(savedKey);
-  }, []);
-
-  // Save API Key
-  const handleSaveApiKey = (key) => {
-    setApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
-    showNotification("API Key 已儲存");
-  };
-
-  // Auth Listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        // if (!currentUser.isAnonymous) {
-        //   const isAllowed = await checkWhitelist(currentUser.email);
-        //   if (!isAllowed) {
-        //     await signOut(auth);
-        //     setUser(null);
-        //     setAuthLoading(false);
-        //     showNotification("此帳號未獲授權", "error");
-        //     return;
-        //   }
-        // }
-        setUser(currentUser);
-      } else {
-        setUser(null);
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.309.0",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js",
+        "firebase/analytics": "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js"
       }
-      setAuthLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // Sync History
-  useEffect(() => {
-    if (!user) {
-      setHistory([]);
-      return;
     }
+    </script>
 
-    const q = query(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'history'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const historyData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      historyData.sort((a, b) => new Date(b.dateSaved) - new Date(a.dateSaved));
-      setHistory(historyData);
-    }, (error) => {
-      console.error("Error fetching history:", error);
-      // Optional: showNotification("無法載入歷史紀錄", "error");
-    });
+    <!-- 3. 載入 Babel (讓瀏覽器看得懂 JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    return () => unsubscribe();
-  }, [user]);
-
-  // Notification Timer
-  useEffect(() => {
-    if (notification.message) {
-      const timer = setTimeout(() => setNotification({ message: '', type: '' }), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notification]);
-
-  // --- Actions ---
-
-  const showNotification = (message, type = 'success') => {
-    setNotification({ message, type });
-  };
-
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      // Firestore rule will handle rejection if not whitelisted, UI will just show empty history
-      showNotification("Google 登入成功");
-    } catch (error) {
-      console.error("Google login error", error);
-      showNotification("Google 登入失敗", "error");
-    }
-  };
-
-  const handleGuestLogin = async () => {
-    try {
-      await signInAnonymously(auth);
-      showNotification("訪客登入成功 (資料僅暫存)");
-    } catch (error) {
-      console.error("Guest login error", error);
-      showNotification("訪客登入失敗", "error");
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setFestivalName('');
-      setPerformances([]);
-      setMySchedule([]);
-      setView('manage');
-      showNotification("已登出");
-    } catch (error) {
-      console.error("Logout error", error);
-    }
-  };
-
-  const handleStartDateChange = (e) => {
-    const newStartDate = e.target.value;
-    setStartDate(newStartDate);
-    setEndDate(newStartDate);
-  };
-
-  const addPerformance = (perf) => {
-    setPerformances(prev => [...prev, { ...perf, id: Date.now().toString() + Math.random().toString(36).substr(2, 9) }]);
-  };
-
-  const updatePerformance = (updatedPerf) => {
-    setPerformances(prev => prev.map(p => p.id === updatedPerf.id ? updatedPerf : p));
-    setEditingItem(null); 
-  };
-
-  const startEditing = (e, perf) => {
-    e.stopPropagation();
-    if (editingItem && editingItem.id === perf.id) {
-      setEditingItem(null);
-    } else {
-      setEditingItem(perf);
-      setIsAddFormOpen(false);
-    }
-  };
-
-  const cancelEditing = (e) => {
-    if (e) e.stopPropagation();
-    setEditingItem(null);
-  };
-
-  const removePerformance = (e, id) => {
-    if (e) e.stopPropagation();
-    setPerformances(performances.filter(p => p.id !== id));
-    setMySchedule(mySchedule.filter(pid => pid !== id));
-    if (editingItem && editingItem.id === id) {
-      setEditingItem(null);
-    }
-  };
-
-  const toggleMySchedule = (id) => {
-    if (view === 'program') return; 
-    if (mySchedule.includes(id)) {
-      setMySchedule(mySchedule.filter(pid => pid !== id));
-    } else {
-      setMySchedule([...mySchedule, id]);
-    }
-  };
-
-  // --- History Actions (Firestore) ---
-
-  const saveCurrentToHistory = async () => {
-    if (!user) {
-      showNotification('請先登入', 'error');
-      return;
-    }
-    if (!festivalName.trim()) {
-      showNotification('請輸入活動名稱', 'error');
-      return;
-    }
-    if (!startDate) {
-      showNotification('請選擇日期', 'error');
-      return;
-    }
-    
-    const nameToSave = festivalName.trim();
-    const dateToSave = startDate; 
-    
-    const existingEntry = history.find(h => h.name === nameToSave && (h.startDate || h.eventDate) === dateToSave);
-    
-    const entryData = {
-        name: nameToSave,
-        type: eventType,
-        startDate: startDate,
-        endDate: eventType === 'festival' ? endDate : '',
-        dateSaved: new Date().toLocaleDateString(),
-        performances: performances,
-        mySchedule: mySchedule
-    };
-
-    try {
-      if (existingEntry) {
-        await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', existingEntry.id), entryData);
-        showNotification(`已更新紀錄 "${nameToSave}"`);
-      } else {
-        const newId = Date.now().toString();
-        await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', newId), entryData);
-        showNotification(`已儲存 "${nameToSave}"`);
-      }
-    } catch (error) {
-      console.error("Error saving to Firestore", error);
-      showNotification("儲存失敗 (權限不足?)", "error");
-    }
-  };
-
-  const loadFromHistory = (entry) => {
-    if (performances.length > 0) {
-      if (!confirm('載入舊行程將會覆蓋目前的編輯進度，確定要載入嗎？')) return;
-    }
-    setFestivalName(entry.name);
-    setStartDate(entry.startDate || entry.eventDate || '');
-    setEndDate(entry.endDate || '');
-    setEventType(entry.type || 'festival'); 
-    setPerformances(entry.performances || []);
-    setMySchedule(entry.mySchedule || []);
-    
-    setView('program'); 
-    showNotification(`已載入 "${entry.name}"`);
-  };
-
-  const deleteFromHistory = async (e, id) => {
-    e.stopPropagation();
-    if (!user) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', id));
-      showNotification('已刪除紀錄');
-    } catch (error) {
-      console.error("Error deleting from Firestore", error);
-      showNotification("刪除失敗", "error");
-    }
-  };
-
-  const startNewFestival = () => {
-    if (performances.length > 0) {
-      if (!confirm('確定要清除目前資料並開始新的音樂祭嗎？建議先儲存目前進度。')) return;
-    }
-    setFestivalName('');
-    setStartDate('');
-    setEndDate('');
-    setEventType('festival');
-    setPerformances([]);
-    setMySchedule([]);
-    setView('manage');
-    showNotification('已重置');
-  };
-
-  // --- AI Actions ---
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const runAIImageImport = async () => {
-    if (!selectedImage) return;
-    if (!apiKey) {
-      showNotification("請先點擊上方設定，輸入 API 金鑰", "error");
-      return;
-    }
-    setAiLoading(true);
-    setAiError('');
-
-    const base64Image = selectedImage.split(',')[1];
-    const systemInstruction = `
-      You are a data extraction assistant for a music festival planner app.
-      Analyze the provided image (which is a timetable or lineup poster).
-      Extract ALL performance data into a JSON array.
-      Schema: [{ "artist": string, "stage": string (e.g. Main Stage), "day": string, "startTime": string (HH:MM), "endTime": string (HH:MM), "description": string (brief genre or "Auto-Imported") }]
-      Rules:
-      1. FORCE all extracted events to have the day: "${importDay}". Do not guess the day from the image text.
-      2. If end time is missing, assume duration is 1 hour.
-      3. Translate stage names to Traditional Chinese if possible.
-      4. Ensure time is in 24-hour format HH:MM.
-    `;
-
-    try {
-      const result = await callGemini(`Extract the schedule from this image and set day to ${importDay}.`, base64Image, systemInstruction, apiKey);
-      if (Array.isArray(result)) {
-        const mergedMap = new Map();
-        result.forEach(item => {
-          const key = `${importDay}-${(item.stage || '').trim()}-${(item.startTime || '').trim()}`;
-          if (mergedMap.has(key)) {
-            const existing = mergedMap.get(key);
-            existing.artist = `${existing.artist} / ${item.artist}`;
-          } else {
-            mergedMap.set(key, { ...item, day: importDay, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) });
-          }
-        });
-        
-        const mergedItems = Array.from(mergedMap.values());
-        setPerformances(prev => {
-          const others = prev.filter(p => p.day !== importDay);
-          return [...others, ...mergedItems];
-        });
-
-        setShowAIModal(false);
-        setSelectedImage(null);
-        showNotification(`成功匯入 ${mergedItems.length} 筆表演！`);
-      } else {
-        throw new Error("無法辨識為有效的節目表格式");
-      }
-    } catch (err) {
-      setAiError(`辨識失敗: ${err.message}`);
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const runAIRecommend = async () => {
-    if (!aiPrompt.trim()) return;
-    if (!apiKey) {
-      showNotification("請先點擊上方設定，輸入 API 金鑰", "error");
-      return;
-    }
-    setAiLoading(true);
-    setAiError('');
-
-    const systemInstruction = `
-      You are an enthusiastic festival guide.
-      The user will give you a preference (e.g., "I like rock" or "Chill vibes").
-      You have access to the current list of performances in JSON format.
-      Select the best matching performance IDs for the user.
-      Return JSON: { "selectedIds": [string], "message": string (A short, fun comment in Traditional Chinese explaining the choice) }
-    `;
-
-    const prompt = `Current Lineup: ${JSON.stringify(performances)} User Preference: "${aiPrompt}" Select the best matches.`;
-
-    try {
-      const result = await callGemini(prompt, null, systemInstruction, apiKey);
-      if (result.selectedIds && Array.isArray(result.selectedIds)) {
-        const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
-        setMySchedule(prev => [...prev, ...newIds]);
-        setAiPrompt('');
-        setShowAIModal(false);
-        showNotification(`AI 已為您加入 ${newIds.length} 個行程！`);
-        setView('program');
-      }
-    } catch (err) {
-      setAiError(`AI 回應失敗: ${err.message}`);
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // --- Helpers ---
-  
-  const getConflicts = (scheduleIds, allPerformances) => {
-    const selected = allPerformances.filter(p => scheduleIds.includes(p.id));
-    const conflicts = new Set();
-    for (let i = 0; i < selected.length; i++) {
-      for (let j = i + 1; j < selected.length; j++) {
-        const a = selected[i];
-        const b = selected[j];
-        if (a.day === b.day) {
-          if ((a.startTime >= b.startTime && a.startTime < b.endTime) || (b.startTime >= a.startTime && b.startTime < a.endTime)) {
-            conflicts.add(a.id);
-            conflicts.add(b.id);
-          }
+    <style>
+        /* 自定義捲軸樣式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
-      }
-    }
-    return conflicts;
-  };
+        ::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569; 
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+    <div id="root"></div>
 
-  const conflictIds = useMemo(() => getConflicts(mySchedule, performances), [mySchedule, performances]);
+    <!-- 4. 您的 React 程式碼 -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Calendar, Clock, Music, MapPin, Heart, Plus, Save, Upload, Download, 
+            AlertCircle, CheckCircle, List, ArrowRight, Sparkles, X, Loader2, 
+            Image as ImageIcon, MessageSquare, ChevronDown, ChevronUp, Layers, 
+            LayoutGrid, Edit, Trash2, History, RotateCcw, FolderOpen, Mic2, 
+            Ticket, Check, AlertTriangle, LogOut, User, Settings, Key 
+        } from 'lucide-react';
 
-  const getCurrentDayPerformances = useMemo(() => {
-    return performances
-      .filter(p => p.day === activeDay)
-      .sort((a, b) => {
-        const timeCompare = a.startTime.localeCompare(b.startTime);
-        if (timeCompare !== 0) return timeCompare;
-        return a.stage.localeCompare(b.stage);
-      });
-  }, [performances, activeDay]);
+        // --- Firebase Imports ---
+        import { initializeApp } from "firebase/app";
+        import { getAnalytics } from "firebase/analytics";
+        import { 
+            getAuth, 
+            signInWithPopup, 
+            GoogleAuthProvider, 
+            signInAnonymously, 
+            signOut, 
+            onAuthStateChanged 
+        } from "firebase/auth";
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            setDoc, 
+            getDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            query 
+        } from "firebase/firestore";
 
-  const getCurrentDayMySchedule = useMemo(() => {
-    return getCurrentDayPerformances.filter(p => mySchedule.includes(p.id));
-  }, [getCurrentDayPerformances, mySchedule]);
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDKNyqJCEbI5uCSUc4ws7dKuyBZA2lRaOA",
+            authDomain: "kevinwork-eb7cc.firebaseapp.com",
+            databaseURL: "https://kevinwork-eb7cc-default-rtdb.firebaseio.com",
+            projectId: "kevinwork-eb7cc",
+            storageBucket: "kevinwork-eb7cc.firebasestorage.app",
+            messagingSenderId: "462117666080",
+            appId: "1:462117666080:web:4289c00cc5144f98f6eb45",
+            measurementId: "G-2DRK1D06QE"
+        };
 
-  const pastTrips = useMemo(() => {
-    const now = new Date();
-    return history.filter(h => new Date(h.startDate || h.dateSaved) < now);
-  }, [history]);
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const APP_ID = 'festival-planner-v1';
 
-  const futureTrips = useMemo(() => {
-    const now = new Date();
-    return history.filter(h => new Date(h.startDate || h.dateSaved) >= now);
-  }, [history]);
+        // --- Gemini API Helper ---
+        const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
+            const envApiKey = ""; 
+            const apiKey = userApiKey || envApiKey;
 
-  // --- Components ---
+            if (!apiKey) {
+                throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
+            }
 
-  const DayTabs = () => (
-    <div className="flex p-1 bg-slate-900 rounded-xl mb-4 border border-slate-800 shrink-0">
-      {DAYS.map(day => (
-        <button
-          key={day}
-          onClick={() => { setActiveDay(day); cancelEditing(); }}
-          className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all duration-200 ${
-            activeDay === day 
-              ? 'bg-purple-600 text-white shadow-lg' 
-              : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
-          }`}
-        >
-          {day}
-        </button>
-      ))}
-    </div>
-  );
+            const model = "gemini-2.5-flash-preview-09-2025";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const PerformanceCard = ({ perf, isSelected, toggle, isConflict, readOnly = false, compact = false }) => (
-    <div 
-      onClick={() => !readOnly && toggle(perf.id)}
-      className={`relative p-3 rounded-lg border transition-all duration-200 cursor-pointer mb-2 w-full ${
-      isSelected 
-        ? 'bg-purple-900/30 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.2)]' 
-        : readOnly 
-          ? 'bg-slate-900/30 border-slate-800 opacity-60 hover:opacity-80' // Dimmed style for non-selected items in read-only view
-          : 'bg-slate-800 border-slate-700 hover:border-slate-500'
-    } ${isConflict ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-    >
-      <div className="flex justify-between items-start mb-1">
-        <div className="flex-1 min-w-0 pr-1">
-          {!compact && (
-            <div className="inline-flex items-center gap-1 bg-slate-900/80 text-purple-300 px-2 py-0.5 rounded text-[10px] mb-1 border border-slate-700/50">
-              <Layers size={10} />
-              {perf.stage}
-            </div>
-          )}
-          <h3 className={`text-sm font-bold leading-tight truncate ${isSelected ? 'text-white' : 'text-slate-300'}`}>{perf.artist}</h3>
-        </div>
-        
-        {isSelected && (
-          <div className="p-1.5 rounded-full bg-purple-500 text-white shrink-0">
-             <Heart size={14} fill="currentColor" />
-          </div>
-        )}
-      </div>
+            const contents = [
+                {
+                    parts: [
+                        { text: prompt },
+                        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
+                    ]
+                }
+            ];
 
-      <div className={`flex items-center gap-2 text-xs ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
-        <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${isConflict ? 'bg-red-900/50 text-red-200' : 'bg-slate-900/50'}`}>
-          <Clock size={12} />
-          <span>{perf.startTime} - {perf.endTime}</span>
-        </div>
-      </div>
-      
-      {isConflict && (
-        <div className="mt-1 text-yellow-400 text-[10px] font-bold flex items-center gap-1 animate-pulse">
-          <AlertCircle size={10} />
-          衝堂
-        </div>
-      )}
-    </div>
-  );
+            const payload = {
+                contents,
+                generationConfig: {
+                    responseMimeType: "application/json"
+                },
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                }
+            };
 
-  // --- Views ---
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
-        <Loader2 className="animate-spin text-purple-500" size={32} />
-      </div>
-    );
-  }
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`API Error: ${response.status} ${errorData.error?.message || ''}`);
+                }
+                const data = await response.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error("No content generated");
+                
+                return JSON.parse(text);
+            } catch (error) {
+                console.error("Gemini API Call Failed:", error);
+                throw error;
+            }
+        };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-8">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-purple-500/20 mb-4">
-              <Music size={32} className="text-white" />
-            </div>
-            <h1 className="text-3xl font-black bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Festival Planner
-            </h1>
-            <p className="text-slate-400 text-sm">音樂祭行程規劃助手</p>
-          </div>
-          
-          <div className="space-y-4">
-            <button 
-              onClick={handleGoogleLogin}
-              className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              Google 登入
-            </button>
-            <button 
-              onClick={handleGuestLogin}
-              className="w-full bg-slate-800 text-slate-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors border border-slate-700"
-            >
-              <User size={18} />
-              訪客登入
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+        const DAYS = ['Day 1', 'Day 2', 'Day 3'];
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-20">
-      
-      <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
-      
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
+        // --- Sub-components ---
 
-      {/* Header - Only in Manage View */}
-      {view === 'manage' && (
-        <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-10 pb-2">
-          <div className="max-w-4xl mx-auto px-4 py-3 space-y-3">
+        const Notification = ({ message, type, onClose }) => {
+            if (!message) return null;
             
-            {/* Top Row: Type, Name, Save/Reset Actions */}
-            <div className="flex gap-2 items-center justify-between">
-              <div className="flex gap-2 items-center flex-1 min-w-0">
-                {/* Custom Type Selector */}
-                <div className="flex gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700 shrink-0">
-                  <button 
-                    onClick={() => setEventType('festival')}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
-                      eventType === 'festival' 
-                        ? 'bg-purple-600 border-purple-500 text-white shadow-lg shadow-purple-500/20' 
-                        : 'bg-transparent border-transparent text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    <Ticket size={16} />
-                    <span className="hidden sm:inline">音樂祭</span>
-                  </button>
-                  <button 
-                    onClick={() => setEventType('gig')}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
-                      eventType === 'gig' 
-                        ? 'bg-pink-600 border-pink-500 text-white shadow-lg shadow-pink-500/20' 
-                        : 'bg-transparent border-transparent text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    <Mic2 size={16} />
-                    <span className="hidden sm:inline">專場</span>
-                  </button>
+            const bgColor = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+            const icon = type === 'success' ? <Check size={18} /> : <AlertTriangle size={18} />;
+
+            return (
+                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-white font-medium animate-in slide-in-from-top-2 fade-in duration-300 ${bgColor}`}>
+                    {icon}
+                    <span>{message}</span>
+                    <button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100">
+                        <X size={16} />
+                    </button>
                 </div>
+            );
+        };
 
-                <input
-                  type="text"
-                  value={festivalName}
-                  onChange={(e) => setFestivalName(e.target.value)}
-                  placeholder={eventType === 'festival' ? "輸入音樂祭名稱" : "輸入專場名稱"}
-                  className="font-bold text-lg text-white bg-transparent border-b border-transparent hover:border-slate-700 focus:border-purple-500 outline-none placeholder-slate-600 w-full px-2 py-1 transition-colors min-w-0"
-                />
-              </div>
+        const SettingsModal = ({ isOpen, onClose, apiKey, onSave }) => {
+            const [keyInput, setKeyInput] = useState(apiKey);
 
-              {/* Action Buttons */}
-              <div className="flex gap-1 shrink-0">
-                <button 
-                  onClick={() => setShowSettings(true)}
-                  className="p-2 bg-slate-800 hover:bg-slate-600 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700"
-                  title="設定 API 金鑰"
-                >
-                  <Settings size={18} />
-                </button>
-                <button 
-                  onClick={saveCurrentToHistory}
-                  className="p-2 bg-slate-800 hover:bg-green-600 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700"
-                  title="儲存"
-                >
-                  <Save size={18} />
-                </button>
-                <button 
-                  onClick={startNewFestival}
-                  className="p-2 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700"
-                  title="重置/新旅程"
-                >
-                  <RotateCcw size={18} />
-                </button>
-                <button 
-                  onClick={handleLogout}
-                  className="p-2 bg-slate-800 hover:bg-slate-600 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700"
-                  title="登出"
-                >
-                  <LogOut size={18} />
-                </button>
-              </div>
-            </div>
+            useEffect(() => {
+                setKeyInput(apiKey);
+            }, [apiKey, isOpen]);
 
-            {/* Bottom Row: Date Inputs */}
-            <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50 hover:border-slate-600 transition-colors w-fit">
-              <Calendar size={16} className="text-slate-400"/>
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={handleStartDateChange}
-                className="bg-transparent text-sm text-slate-300 outline-none border-none p-0 w-[110px]"
-              />
-              {eventType === 'festival' && (
-                <>
-                  <span className="text-slate-500 text-xs">to</span>
-                  <input 
-                    type="date" 
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="bg-transparent text-sm text-slate-300 outline-none border-none p-0 w-[110px]"
-                  />
-                </>
-              )}
-            </div>
+            if (!isOpen) return null;
 
-          </div>
-        </header>
-      )}
-
-      {/* Program View Header (Read-Only Title) */}
-      {view !== 'manage' && (
-        <div className="sticky top-0 z-10 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex justify-between items-center">
-           <div className="font-bold text-lg text-white truncate max-w-[70%]">
-             {festivalName || '未命名行程'}
-           </div>
-           {view === 'program' && (
-             <div className="text-xs text-slate-400 flex items-center gap-2">
-                <span className="bg-purple-900/50 px-2 py-1 rounded text-purple-300">
-                  {mySchedule.length} 個選擇
-                </span>
-             </div>
-           )}
-        </div>
-      )}
-
-      {/* Main Content Area */}
-      <main className="max-w-4xl mx-auto p-4 space-y-6 flex flex-col h-[calc(100vh-130px)]">
-        
-        {/* Manage View */}
-        {view === 'manage' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto pb-20">
-            
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => { 
-                    setIsAddFormOpen(!isAddFormOpen); 
-                    setEditingItem(null); 
-                  }}
-                  className={`p-2 rounded-full border transition-colors shadow-lg ${
-                    isAddFormOpen 
-                      ? 'bg-slate-800 border-slate-600 text-slate-300 hover:text-white' 
-                      : 'bg-purple-600 border-purple-500 text-white hover:bg-purple-500'
-                  }`}
-                  title={isAddFormOpen ? "關閉表單" : "新增表演"}
-                >
-                  {isAddFormOpen ? <X size={18} /> : <Plus size={18} />}
-                </button>
-                <h2 className="text-2xl font-bold text-white">管理節目表</h2>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                 <button 
-                  onClick={() => { setAiMode('import'); setImportDay(activeDay); setShowAIModal(true); }}
-                  className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold px-3 py-2 rounded-lg border border-transparent flex items-center gap-1 shadow-lg shadow-purple-900/20"
-                >
-                  <Sparkles size={14} /> AI 圖片匯入
-                </button>
-              </div>
-            </div>
-
-            {/* Day Tabs */}
-            <DayTabs />
-
-            {/* Add Form (Top) */}
-            <AddPerformanceForm 
-              isOpen={isAddFormOpen}
-              onAdd={addPerformance}
-              onUpdate={updatePerformance} 
-              onDelete={(id) => removePerformance(null, id)}
-              onCancel={() => setIsAddFormOpen(false)}
-              editingItem={null} 
-              activeDay={activeDay}
-            />
-
-            <div className="space-y-4">
-              <div className="flex justify-between items-end">
-                 <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-                  {activeDay} 節目列表 ({getCurrentDayPerformances.length})
-                </h3>
-                 <span className="text-xs text-purple-400 font-medium animate-pulse">
-                  排序：時間(早➔晚)
-                </span>
-              </div>
-              
-              {getCurrentDayPerformances.length === 0 ? (
-                <div className="text-center py-10 border-2 border-dashed border-slate-800 rounded-xl">
-                  <p className="text-slate-500">此日目前沒有節目，請手動新增或使用 AI 圖片匯入。</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {getCurrentDayPerformances.map(p => {
-                    const isSelected = mySchedule.includes(p.id);
-                    const isConflict = isSelected && conflictIds.has(p.id);
-                    const isEditing = editingItem?.id === p.id;
-
-                    return (
-                      <React.Fragment key={p.id}>
-                        <div 
-                          onClick={() => toggleMySchedule(p.id)}
-                          className={`p-3 rounded-lg flex items-center justify-between group border cursor-pointer transition-all duration-200 select-none ${
-                            isSelected 
-                              ? 'bg-purple-900/30 border-purple-500 shadow-[inset_0_0_10px_rgba(168,85,247,0.2)]' 
-                              : 'bg-slate-900/50 border-slate-800 hover:border-slate-600'
-                          } ${isEditing ? 'border-purple-500 ring-1 ring-purple-500 bg-purple-900/10' : ''}`}
-                        >
-                          <div className="flex items-center gap-4 flex-1 min-w-0">
-                            <div className="w-24 shrink-0 flex flex-col items-start gap-1">
-                              <span className="text-slate-400 font-mono text-xs">
-                                {p.startTime}
-                              </span>
-                              <span className="text-xs font-bold text-purple-300 bg-purple-900/40 px-1.5 py-0.5 rounded border border-purple-700/50 truncate max-w-full">
-                                {p.stage}
-                              </span>
-                            </div>
-                            
-                            <div className="truncate flex-1">
-                              <div className="font-bold text-white truncate flex items-center gap-2">
-                                {p.artist}
-                                {isConflict && (
-                                  <span className="text-yellow-400 text-xs font-bold flex items-center gap-1 bg-yellow-400/10 px-2 py-0.5 rounded">
-                                    ⚠️ 重疊
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-slate-500 truncate flex items-center gap-1">
-                                {p.startTime} - {p.endTime}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 pl-2">
-                            <button 
-                              onClick={(e) => startEditing(e, p)}
-                              className={`p-2 rounded-full transition-colors ${isEditing ? 'text-purple-400 bg-purple-900/30' : 'text-slate-500 hover:text-purple-400 hover:bg-purple-900/20'}`}
-                              title="編輯此表演"
-                            >
-                              <Edit size={16} />
+            return (
+                <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4">
+                    <div className="bg-slate-900 w-full max-w-md rounded-2xl border border-slate-700 shadow-2xl p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Settings className="text-purple-500" /> 設定
+                            </h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-white">
+                                <X size={24} />
                             </button>
-                            
-                            <div className={`transition-transform duration-200 ${isSelected ? 'scale-110' : 'scale-100 opacity-50'}`}>
-                               <Heart size={20} fill={isSelected ? "#a855f7" : "none"} className={isSelected ? 'text-purple-500' : 'text-slate-600'} />
-                            </div>
-                          </div>
                         </div>
 
-                        {/* Inline Edit Form */}
-                        {isEditing && (
-                          <div className="relative">
-                            <div className="absolute left-6 top-[-8px] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-purple-500/50"></div>
-                            <AddPerformanceForm 
-                              isOpen={true}
-                              onUpdate={updatePerformance}
-                              onDelete={(id) => removePerformance(null, id)}
-                              onCancel={cancelEditing}
-                              editingItem={editingItem}
-                              activeDay={activeDay}
-                              isInline={true}
-                            />
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Program View (Horizontal Timetable, Read-Only) */}
-        {view === 'program' && (
-          <div className="flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="flex justify-between items-center mb-4 shrink-0 px-2">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <LayoutGrid className="text-purple-500" size={20}/>
-                  所有活動
-                </h2>
-                {performances.length > 0 && (
-                   <button 
-                    onClick={() => { setAiMode('recommend'); setShowAIModal(true); }}
-                    className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold px-3 py-2 rounded-lg border border-transparent flex items-center gap-1 shadow-lg shadow-purple-900/20"
-                  >
-                    <Sparkles size={14} /> AI 排程助手
-                  </button>
-                )}
-            </div>
-
-            {/* Day Tabs */}
-            <DayTabs />
-
-            {/* Horizontal Stage Columns Container */}
-            {(() => {
-              // Show ALL performances for the active day
-              const allDayPerformances = getCurrentDayPerformances; 
-              const uniqueStages = Array.from(new Set(allDayPerformances.map(p => p.stage))).sort();
-
-              if (allDayPerformances.length === 0) {
-                 return <div className="text-center text-slate-500 py-8">本日無節目</div>;
-              }
-
-              return (
-                <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
-                   <div className="flex gap-3 h-full px-1 min-w-min">
-                    {uniqueStages.map(stage => {
-                       const stagePerformances = allDayPerformances.filter(p => p.stage === stage);
-                       
-                       return (
-                        <div key={stage} className="flex-none w-[280px] flex flex-col h-full bg-slate-900/40 rounded-xl border border-slate-800/60 overflow-hidden">
-                          <div className="p-3 bg-slate-800 border-b border-slate-700 text-center shrink-0">
-                            <h3 className="text-purple-300 font-bold text-md truncate">{stage}</h3>
-                          </div>
-                          
-                          <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                            {stagePerformances.length > 0 ? (
-                              stagePerformances.map(perf => (
-                                <PerformanceCard 
-                                  key={perf.id} 
-                                  perf={perf} 
-                                  isSelected={mySchedule.includes(perf.id)} // Pass highlight status
-                                  toggle={() => {}} // No-op for toggle
-                                  isConflict={mySchedule.includes(perf.id) && conflictIds.has(perf.id)}
-                                  readOnly={true} // Enable read-only visual style
-                                  compact={true}
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-300 flex items-center gap-2">
+                                    <Key size={16} /> Gemini API Key
+                                </label>
+                                <input 
+                                    type="password" 
+                                    value={keyInput}
+                                    onChange={(e) => setKeyInput(e.target.value)}
+                                    placeholder="請輸入您的 API Key"
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white focus:border-purple-500 outline-none"
                                 />
-                              ))
-                            ) : (
-                              <div className="h-full flex items-center justify-center">
-                                <span className="text-slate-700 text-xs">無節目</span>
-                              </div>
-                            )}
-                          </div>
+                                <p className="text-xs text-slate-500">
+                                    需要設定金鑰才能使用 AI 圖片匯入與排程建議功能。
+                                </p>
+                            </div>
+
+                            <button 
+                                onClick={() => { onSave(keyInput); onClose(); }}
+                                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition-colors"
+                            >
+                                儲存設定
+                            </button>
                         </div>
-                       );
-                    })}
-                    <div className="w-1 flex-none"></div>
-                  </div>
+                    </div>
                 </div>
-              );
-            })()}
-          </div>
-        )}
+            );
+        };
 
-        {/* Trips View (Past/Future) */}
-        {view === 'trips' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto pb-20">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              <History className="text-purple-500" size={24}/>
-              行程
-            </h2>
+        const AddPerformanceForm = ({ 
+            onAdd, 
+            onUpdate, 
+            onDelete, 
+            onCancel, 
+            editingItem, 
+            activeDay,
+            isOpen,
+            isInline = false
+        }) => {
+            const [form, setForm] = useState({ artist: '', stage: '', day: activeDay, startTime: '', endTime: '' });
 
-            {/* Future Trips */}
-            {futureTrips.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles size={14} /> 即將到來
-                </h3>
-                {futureTrips.map(item => (
-                  <div key={item.id} className="bg-slate-900/80 border border-purple-500/30 rounded-xl p-4 flex justify-between items-center hover:border-purple-500 transition-colors shadow-lg shadow-purple-900/10">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        {item.type === 'gig' ? (
-                          <span className="bg-pink-900/50 text-pink-200 text-[10px] px-2 py-0.5 rounded border border-pink-800">專場</span>
-                        ) : (
-                          <span className="bg-purple-900/50 text-purple-200 text-[10px] px-2 py-0.5 rounded border border-purple-800">音樂祭</span>
+            useEffect(() => {
+                if (editingItem) {
+                    setForm(editingItem);
+                } else {
+                    setForm({ artist: '', stage: '', day: activeDay, startTime: '', endTime: '' });
+                }
+            }, [editingItem, activeDay, isOpen]);
+
+            if (!isOpen) return null;
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!form.artist || !form.startTime) return;
+                
+                if (editingItem) {
+                    onUpdate(form);
+                } else {
+                    onAdd(form);
+                }
+            };
+
+            const handleDeleteClick = () => {
+                onDelete(editingItem.id);
+            };
+
+            return (
+                <form 
+                    onSubmit={handleSubmit} 
+                    className={`p-4 rounded-xl border space-y-4 animate-in slide-in-from-top-2 duration-300 ${
+                        isInline 
+                        ? 'bg-slate-900/80 border-purple-500/50 mt-2 mb-4 mx-2 shadow-inner' 
+                        : 'bg-slate-800 border-slate-700 mb-6'
+                    }`}
+                >
+                    <div className="flex justify-between items-center">
+                        <h3 className="font-semibold text-white flex items-center gap-2 text-sm">
+                            {editingItem ? <Edit size={16} className="text-purple-400" /> : <Plus size={16} className="text-purple-400" />}
+                            {editingItem ? '編輯此表演' : '新增表演詳細資訊'}
+                        </h3>
+                        {editingItem && (
+                            <button type="button" onClick={onCancel} className="text-xs text-slate-400 hover:text-white underline">
+                                取消
+                            </button>
                         )}
-                        <h4 className="font-bold text-white text-lg">{item.name}</h4>
-                      </div>
-                      <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-                        <Calendar size={12} /> {item.startDate || item.dateSaved} {item.endDate ? `- ${item.endDate}` : ''}
-                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => loadFromHistory(item)} className="p-2 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-500">
-                        開啟
-                      </button>
-                      <button onClick={(e) => deleteFromHistory(e, item.id)} className="p-2 text-slate-500 hover:text-red-400"><Trash2 size={16} /></button>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input 
+                            placeholder="藝人 / 樂團名稱" 
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:border-purple-500 outline-none text-sm"
+                            value={form.artist}
+                            onChange={e => setForm({...form, artist: e.target.value})}
+                        />
+                        <input 
+                            placeholder="舞台名稱" 
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:border-purple-500 outline-none text-sm"
+                            value={form.stage}
+                            onChange={e => setForm({...form, stage: e.target.value})}
+                        />
+                        <div className="flex gap-2">
+                            <select 
+                                className="bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none text-sm cursor-pointer hover:border-purple-500 transition-colors"
+                                value={form.day}
+                                onChange={e => setForm({...form, day: e.target.value})}
+                                title="修改天數以移動表演"
+                            >
+                                {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <input 
+                                type="time" 
+                                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none text-sm"
+                                value={form.startTime}
+                                onChange={e => setForm({...form, startTime: e.target.value})}
+                            />
+                            <span className="self-center text-slate-500 text-sm">to</span>
+                            <input 
+                                type="time" 
+                                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg p-2 text-white outline-none text-sm"
+                                value={form.endTime}
+                                onChange={e => setForm({...form, endTime: e.target.value})}
+                            />
+                        </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Past Trips */}
-            <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">過往回憶</h3>
-              {pastTrips.length === 0 && futureTrips.length === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed border-slate-800 rounded-xl text-slate-500">
-                  <FolderOpen size={32} className="mx-auto mb-2 opacity-50" />
-                  <p>尚無行程紀錄</p>
-                </div>
-              ) : (
-                pastTrips.map(item => (
-                  <div key={item.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex justify-between items-center opacity-70 hover:opacity-100 transition-all">
-                    <div>
-                      <h4 className="font-bold text-white text-lg">{item.name}</h4>
-                      <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                        <Calendar size={12} /> {item.startDate || item.dateSaved}
-                      </div>
+                    
+                    <div className="flex gap-3 pt-2">
+                        {editingItem && (
+                            <button 
+                                type="button" 
+                                onClick={handleDeleteClick}
+                                className="px-4 py-2 rounded-lg transition-colors text-red-400 bg-slate-950 border border-red-900/30 hover:bg-red-900/20 text-sm font-medium flex items-center gap-1"
+                            >
+                                <Trash2 size={14} /> 刪除
+                            </button>
+                        )}
+                        <button 
+                            type="submit" 
+                            className="flex-1 font-bold py-2 rounded-lg transition-colors text-white bg-purple-600 hover:bg-purple-500 text-sm"
+                        >
+                            {editingItem ? '儲存變更' : '新增至節目表'}
+                        </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => loadFromHistory(item)} className="p-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-700">
-                        回顧
-                      </button>
-                      <button onClick={(e) => deleteFromHistory(e, item.id)} className="p-2 text-slate-600 hover:text-red-400"><Trash2 size={16} /></button>
+                </form>
+            );
+        };
+
+        const App = () => {
+            // --- Auth State ---
+            const [user, setUser] = useState(null);
+            const [authLoading, setAuthLoading] = useState(true);
+
+            // --- App State ---
+            const [view, setView] = useState('manage'); 
+            const [festivalName, setFestivalName] = useState('');
+            const [eventType, setEventType] = useState('festival'); 
+            const [startDate, setStartDate] = useState(''); 
+            const [endDate, setEndDate] = useState(''); 
+            const [performances, setPerformances] = useState([]);
+            const [mySchedule, setMySchedule] = useState([]); 
+            const [isAddFormOpen, setIsAddFormOpen] = useState(false); 
+            const [activeDay, setActiveDay] = useState('Day 1');
+            const [editingItem, setEditingItem] = useState(null); 
+            const [history, setHistory] = useState([]); 
+            const [notification, setNotification] = useState({ message: '', type: '' });
+            
+            // AI States
+            const [showAIModal, setShowAIModal] = useState(false);
+            const [aiMode, setAiMode] = useState('import'); 
+            const [aiLoading, setAiLoading] = useState(false);
+            const [aiError, setAiError] = useState('');
+            const [aiPrompt, setAiPrompt] = useState('');
+            const [selectedImage, setSelectedImage] = useState(null);
+            const [importDay, setImportDay] = useState('Day 1');
+            const fileInputRef = useRef(null);
+
+            // Settings State
+            const [showSettings, setShowSettings] = useState(false);
+            const [apiKey, setApiKey] = useState('');
+
+            // --- Helper: Check Whitelist in Firestore ---
+            const checkWhitelist = async (email) => {
+                if (!email) return false;
+                try {
+                    const docRef = doc(db, "whitelist", email);
+                    const docSnap = await getDoc(docRef);
+                    return docSnap.exists();
+                } catch (error) {
+                    console.error("Error checking whitelist:", error);
+                    return false;
+                }
+            };
+
+            // --- Effects ---
+            
+            // Load API Key
+            useEffect(() => {
+                const savedKey = localStorage.getItem('gemini_api_key');
+                if (savedKey) setApiKey(savedKey);
+            }, []);
+
+            // Save API Key
+            const handleSaveApiKey = (key) => {
+                setApiKey(key);
+                localStorage.setItem('gemini_api_key', key);
+                showNotification("API Key 已儲存");
+            };
+
+            // Auth Listener
+            useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+                    if (currentUser) {
+                        setUser(currentUser);
+                    } else {
+                        setUser(null);
+                    }
+                    setAuthLoading(false);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            // Sync History
+            useEffect(() => {
+                if (!user) {
+                    setHistory([]);
+                    return;
+                }
+
+                const q = query(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'history'));
+                
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const historyData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    historyData.sort((a, b) => new Date(b.dateSaved) - new Date(a.dateSaved));
+                    setHistory(historyData);
+                }, (error) => {
+                    console.error("Error fetching history:", error);
+                });
+
+                return () => unsubscribe();
+            }, [user]);
+
+            // Notification Timer
+            useEffect(() => {
+                if (notification.message) {
+                    const timer = setTimeout(() => setNotification({ message: '', type: '' }), 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [notification]);
+
+            // --- Actions ---
+
+            const showNotification = (message, type = 'success') => {
+                setNotification({ message, type });
+            };
+
+            const handleGoogleLogin = async () => {
+                try {
+                    const provider = new GoogleAuthProvider();
+                    await signInWithPopup(auth, provider);
+                    showNotification("Google 登入成功");
+                } catch (error) {
+                    console.error("Google login error", error);
+                    showNotification("Google 登入失敗", "error");
+                }
+            };
+
+            const handleGuestLogin = async () => {
+                try {
+                    await signInAnonymously(auth);
+                    showNotification("訪客登入成功 (資料僅暫存)");
+                } catch (error) {
+                    console.error("Guest login error", error);
+                    showNotification("訪客登入失敗", "error");
+                }
+            };
+
+            const handleLogout = async () => {
+                try {
+                    await signOut(auth);
+                    setFestivalName('');
+                    setPerformances([]);
+                    setMySchedule([]);
+                    setView('manage');
+                    showNotification("已登出");
+                } catch (error) {
+                    console.error("Logout error", error);
+                }
+            };
+
+            const handleStartDateChange = (e) => {
+                const newStartDate = e.target.value;
+                setStartDate(newStartDate);
+                // 只有在專場或未設定結束日期時，才自動同步結束日期
+                // 或者在音樂祭模式下，如果使用者修改了開始日期，將結束日期也設為同一天，方便選擇
+                setEndDate(newStartDate);
+            };
+
+            const addPerformance = (perf) => {
+                setPerformances(prev => [...prev, { ...perf, id: Date.now().toString() + Math.random().toString(36).substr(2, 9) }]);
+            };
+
+            const updatePerformance = (updatedPerf) => {
+                setPerformances(prev => prev.map(p => p.id === updatedPerf.id ? updatedPerf : p));
+                setEditingItem(null); 
+            };
+
+            const startEditing = (e, perf) => {
+                e.stopPropagation();
+                if (editingItem && editingItem.id === perf.id) {
+                    setEditingItem(null);
+                } else {
+                    setEditingItem(perf);
+                    setIsAddFormOpen(false);
+                }
+            };
+
+            const cancelEditing = (e) => {
+                if (e) e.stopPropagation();
+                setEditingItem(null);
+            };
+
+            const removePerformance = (e, id) => {
+                if (e) e.stopPropagation();
+                setPerformances(performances.filter(p => p.id !== id));
+                setMySchedule(mySchedule.filter(pid => pid !== id));
+                if (editingItem && editingItem.id === id) {
+                    setEditingItem(null);
+                }
+            };
+
+            const toggleMySchedule = (id) => {
+                if (view === 'program') return; 
+                if (mySchedule.includes(id)) {
+                    setMySchedule(mySchedule.filter(pid => pid !== id));
+                } else {
+                    setMySchedule([...mySchedule, id]);
+                }
+            };
+
+            // --- History Actions (Firestore) ---
+
+            const saveCurrentToHistory = async () => {
+                if (!user) {
+                    showNotification('請先登入', 'error');
+                    return;
+                }
+                if (!festivalName.trim()) {
+                    showNotification('請輸入活動名稱', 'error');
+                    return;
+                }
+                if (!startDate) {
+                    showNotification('請選擇日期', 'error');
+                    return;
+                }
+                
+                const nameToSave = festivalName.trim();
+                const dateToSave = startDate; 
+                
+                const existingEntry = history.find(h => h.name === nameToSave && (h.startDate || h.eventDate) === dateToSave);
+                
+                const entryData = {
+                    name: nameToSave,
+                    type: eventType,
+                    startDate: startDate,
+                    endDate: eventType === 'festival' ? endDate : '',
+                    dateSaved: new Date().toLocaleDateString(),
+                    performances: performances,
+                    mySchedule: mySchedule
+                };
+
+                try {
+                    if (existingEntry) {
+                        await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', existingEntry.id), entryData);
+                        showNotification(`已更新紀錄 "${nameToSave}"`);
+                    } else {
+                        const newId = Date.now().toString();
+                        await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', newId), entryData);
+                        showNotification(`已儲存 "${nameToSave}"`);
+                    }
+                } catch (error) {
+                    console.error("Error saving to Firestore", error);
+                    showNotification("儲存失敗 (權限不足?)", "error");
+                }
+            };
+
+            const loadFromHistory = (entry) => {
+                if (performances.length > 0) {
+                    if (!confirm('載入舊行程將會覆蓋目前的編輯進度，確定要載入嗎？')) return;
+                }
+                setFestivalName(entry.name);
+                setStartDate(entry.startDate || entry.eventDate || '');
+                setEndDate(entry.endDate || '');
+                setEventType(entry.type || 'festival'); 
+                setPerformances(entry.performances || []);
+                setMySchedule(entry.mySchedule || []);
+                
+                setView('program'); 
+                showNotification(`已載入 "${entry.name}"`);
+            };
+
+            const deleteFromHistory = async (e, id) => {
+                e.stopPropagation();
+                if (!user) return;
+                try {
+                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', id));
+                    showNotification('已刪除紀錄');
+                } catch (error) {
+                    console.error("Error deleting from Firestore", error);
+                    showNotification("刪除失敗", "error");
+                }
+            };
+
+            const startNewFestival = () => {
+                if (performances.length > 0) {
+                    if (!confirm('確定要清除目前資料並開始新的音樂祭嗎？建議先儲存目前進度。')) return;
+                }
+                setFestivalName('');
+                setStartDate('');
+                setEndDate('');
+                setEventType('festival');
+                setPerformances([]);
+                setMySchedule([]);
+                setView('manage');
+                showNotification('已重置');
+            };
+
+            // --- AI Actions ---
+            // ... (AI Image import logic same as before)
+             const handleImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setSelectedImage(reader.result);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const runAIImageImport = async () => {
+                if (!selectedImage) return;
+                if (!apiKey) {
+                    showNotification("請先點擊上方設定，輸入 API 金鑰", "error");
+                    return;
+                }
+                setAiLoading(true);
+                setAiError('');
+
+                const base64Image = selectedImage.split(',')[1];
+                const systemInstruction = `
+                    You are a data extraction assistant for a music festival planner app.
+                    Analyze the provided image (which is a timetable or lineup poster).
+                    Extract ALL performance data into a JSON array.
+                    Schema: [{ "artist": string, "stage": string (e.g. Main Stage), "day": string, "startTime": string (HH:MM), "endTime": string (HH:MM), "description": string (brief genre or "Auto-Imported") }]
+                    Rules:
+                    1. FORCE all extracted events to have the day: "${importDay}". Do not guess the day from the image text.
+                    2. If end time is missing, assume duration is 1 hour.
+                    3. Translate stage names to Traditional Chinese if possible.
+                    4. Ensure time is in 24-hour format HH:MM.
+                `;
+
+                try {
+                    const result = await callGemini(`Extract the schedule from this image and set day to ${importDay}.`, base64Image, systemInstruction, apiKey);
+                    if (Array.isArray(result)) {
+                        const mergedMap = new Map();
+                        result.forEach(item => {
+                            const key = `${importDay}-${(item.stage || '').trim()}-${(item.startTime || '').trim()}`;
+                            if (mergedMap.has(key)) {
+                                const existing = mergedMap.get(key);
+                                existing.artist = `${existing.artist} / ${item.artist}`;
+                            } else {
+                                mergedMap.set(key, { ...item, day: importDay, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) });
+                            }
+                        });
+                        
+                        const mergedItems = Array.from(mergedMap.values());
+                        setPerformances(prev => {
+                            const others = prev.filter(p => p.day !== importDay);
+                            return [...others, ...mergedItems];
+                        });
+
+                        setShowAIModal(false);
+                        setSelectedImage(null);
+                        showNotification(`成功匯入 ${mergedItems.length} 筆表演！`);
+                    } else {
+                        throw new Error("無法辨識為有效的節目表格式");
+                    }
+                } catch (err) {
+                    setAiError(`辨識失敗: ${err.message}`);
+                } finally {
+                    setAiLoading(false);
+                }
+            };
+
+            const runAIRecommend = async () => {
+                if (!aiPrompt.trim()) return;
+                if (!apiKey) {
+                    showNotification("請先點擊上方設定，輸入 API 金鑰", "error");
+                    return;
+                }
+                setAiLoading(true);
+                setAiError('');
+
+                const systemInstruction = `
+                    You are an enthusiastic festival guide.
+                    The user will give you a preference (e.g., "I like rock" or "Chill vibes").
+                    You have access to the current list of performances in JSON format.
+                    Select the best matching performance IDs for the user.
+                    Return JSON: { "selectedIds": [string], "message": string (A short, fun comment in Traditional Chinese explaining the choice) }
+                `;
+
+                const prompt = `Current Lineup: ${JSON.stringify(performances)} User Preference: "${aiPrompt}" Select the best matches.`;
+
+                try {
+                    const result = await callGemini(prompt, null, systemInstruction, apiKey);
+                    if (result.selectedIds && Array.isArray(result.selectedIds)) {
+                        const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
+                        setMySchedule(prev => [...prev, ...newIds]);
+                        setAiPrompt('');
+                        setShowAIModal(false);
+                        showNotification(`AI 已為您加入 ${newIds.length} 個行程！`);
+                        setView('program');
+                    }
+                } catch (err) {
+                    setAiError(`AI 回應失敗: ${err.message}`);
+                } finally {
+                    setAiLoading(false);
+                }
+            };
+            // ... (Helpers and Components from previous version, e.g. getConflicts, etc.)
+            
+            // Helper functions repeated for clarity in full file
+            const getConflicts = (scheduleIds, allPerformances) => {
+                const selected = allPerformances.filter(p => scheduleIds.includes(p.id));
+                const conflicts = new Set();
+                for (let i = 0; i < selected.length; i++) {
+                    for (let j = i + 1; j < selected.length; j++) {
+                        const a = selected[i];
+                        const b = selected[j];
+                        if (a.day === b.day) {
+                            if ((a.startTime >= b.startTime && a.startTime < b.endTime) || (b.startTime >= a.startTime && b.startTime < a.endTime)) {
+                                conflicts.add(a.id);
+                                conflicts.add(b.id);
+                            }
+                        }
+                    }
+                }
+                return conflicts;
+            };
+
+            const conflictIds = useMemo(() => getConflicts(mySchedule, performances), [mySchedule, performances]);
+
+            const getCurrentDayPerformances = useMemo(() => {
+                return performances
+                    .filter(p => p.day === activeDay)
+                    .sort((a, b) => {
+                        const timeCompare = a.startTime.localeCompare(b.startTime);
+                        if (timeCompare !== 0) return timeCompare;
+                        return a.stage.localeCompare(b.stage);
+                    });
+            }, [performances, activeDay]);
+
+            const getCurrentDayMySchedule = useMemo(() => {
+                return getCurrentDayPerformances.filter(p => mySchedule.includes(p.id));
+            }, [getCurrentDayPerformances, mySchedule]);
+
+            const pastTrips = useMemo(() => {
+                const now = new Date();
+                return history.filter(h => new Date(h.startDate || h.dateSaved) < now);
+            }, [history]);
+
+            const futureTrips = useMemo(() => {
+                const now = new Date();
+                return history.filter(h => new Date(h.startDate || h.dateSaved) >= now);
+            }, [history]);
+
+            // --- Render ---
+
+            if (authLoading) {
+                return (
+                    <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+                        <Loader2 className="animate-spin text-purple-500" size={32} />
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+                );
+            }
 
-      </main>
+            if (!user) {
+                return (
+                    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-8">
+                            <div className="text-center space-y-2">
+                                <div className="w-16 h-16 bg-gradient-to-tr from-purple-500 to-pink-500 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-purple-500/20 mb-4">
+                                    <Music size={32} className="text-white" />
+                                </div>
+                                <h1 className="text-3xl font-black bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                    Festival Planner
+                                </h1>
+                                <p className="text-slate-400 text-sm">音樂祭行程規劃助手</p>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <button 
+                                    onClick={handleGoogleLogin}
+                                    className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
+                                >
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24">
+                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                    </svg>
+                                    Google 登入
+                                </button>
+                                <button 
+                                    onClick={handleGuestLogin}
+                                    className="w-full bg-slate-800 text-slate-300 font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors border border-slate-700"
+                                >
+                                    <User size={18} />
+                                    訪客登入
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
 
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 w-full bg-slate-900 border-t border-slate-800 pb-safe z-50">
-        <div className="flex justify-around max-w-4xl mx-auto">
-          <button 
-            onClick={() => setView('manage')}
-            className={`flex-1 py-4 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${view === 'manage' ? 'text-purple-400' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <List size={20} />
-            設定/管理
-          </button>
-          <button 
-            onClick={() => setView('program')}
-            className={`flex-1 py-4 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${view === 'program' ? 'text-purple-400' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <LayoutGrid size={20} />
-            節目表
-          </button>
-          <button 
-            onClick={() => setView('trips')}
-            className={`flex-1 py-4 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${view === 'trips' ? 'text-purple-400' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <History size={20} />
-            行程
-          </button>
-        </div>
-      </nav>
+            return (
+                <div className="min-h-screen bg-slate-950 text-slate-200 font-sans pb-20">
+                    <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
+                    <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
 
-      {/* AI Modal */}
-      {showAIModal && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-slate-900 w-full max-w-lg rounded-2xl border border-purple-500/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-gradient-to-r from-purple-900/50 to-slate-900">
-               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                 <Sparkles className="text-purple-400" size={20} /> 
-                 {aiMode === 'import' ? 'AI 圖片節目表辨識' : 'AI 排程助手'}
-               </h3>
-               <button onClick={() => { setShowAIModal(false); setAiError(''); setSelectedImage(null); }} className="text-slate-400 hover:text-white">
-                 <X size={24} />
-               </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto">
-              {aiMode === 'import' ? (
-                <div className="space-y-4">
-                  <p className="text-slate-300 text-sm">上傳音樂祭的時間表圖片，AI 將自動辨識內容並轉換成可編輯的資料。</p>
-                  
-                  {/* Day Selection */}
-                  <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-300">這張圖片是哪一天的節目？</span>
-                    <select 
-                      value={importDay}
-                      onChange={(e) => setImportDay(e.target.value)}
-                      className="bg-slate-900 border border-slate-600 rounded-lg py-1.5 px-3 text-white text-sm outline-none focus:border-purple-500"
-                    >
-                      {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-
-                  <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-700 hover:border-purple-500 rounded-xl p-8 text-center cursor-pointer transition-colors bg-slate-800/50"
-                  >
-                    {selectedImage ? (
-                      <img src={selectedImage} alt="Preview" className="max-h-60 mx-auto rounded-lg shadow-lg" />
-                    ) : (
-                      <div className="flex flex-col items-center gap-3 text-slate-400">
-                        <ImageIcon size={48} />
-                        <span>點擊選擇圖片或將圖片拖曳至此</span>
-                      </div>
+                    {view === 'manage' && (
+                        <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-10 pb-2">
+                            <div className="max-w-4xl mx-auto px-4 py-3 space-y-3">
+                                <div className="flex gap-2 items-center justify-between">
+                                    <div className="flex gap-2 items-center flex-1 min-w-0">
+                                        <div className="flex gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700 shrink-0">
+                                            <button onClick={() => setEventType('festival')} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${eventType === 'festival' ? 'bg-purple-600 border-purple-500 text-white shadow-lg' : 'bg-transparent border-transparent text-slate-500'}`}><Ticket size={16} /><span className="hidden sm:inline">音樂祭</span></button>
+                                            <button onClick={() => setEventType('gig')} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all border ${eventType === 'gig' ? 'bg-pink-600 border-pink-500 text-white shadow-lg' : 'bg-transparent border-transparent text-slate-500'}`}><Mic2 size={16} /><span className="hidden sm:inline">專場</span></button>
+                                        </div>
+                                        <input type="text" value={festivalName} onChange={(e) => setFestivalName(e.target.value)} placeholder="輸入名稱" className="font-bold text-lg text-white bg-transparent border-b border-transparent hover:border-slate-700 focus:border-purple-500 outline-none w-full px-2 py-1" />
+                                    </div>
+                                    <div className="flex gap-1 shrink-0">
+                                        <button onClick={() => setShowSettings(true)} className="p-2 bg-slate-800 hover:bg-slate-600 text-slate-400 hover:text-white rounded-lg border border-slate-700"><Settings size={18} /></button>
+                                        <button onClick={saveCurrentToHistory} className="p-2 bg-slate-800 hover:bg-green-600 text-slate-400 hover:text-white rounded-lg border border-slate-700"><Save size={18} /></button>
+                                        <button onClick={startNewFestival} className="p-2 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white rounded-lg border border-slate-700"><RotateCcw size={18} /></button>
+                                        <button onClick={handleLogout} className="p-2 bg-slate-800 hover:bg-slate-600 text-slate-400 hover:text-white rounded-lg border border-slate-700"><LogOut size={18} /></button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-2 rounded-lg border border-slate-700/50 w-fit">
+                                    <Calendar size={16} className="text-slate-400"/>
+                                    <input type="date" value={startDate} onChange={handleStartDateChange} className="bg-transparent text-sm text-slate-300 outline-none border-none p-0 w-[110px]" />
+                                    {eventType === 'festival' && <><span className="text-slate-500 text-xs">to</span><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-sm text-slate-300 outline-none border-none p-0 w-[110px]" /></>}
+                                </div>
+                            </div>
+                        </header>
                     )}
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      onChange={handleImageUpload} 
-                      accept="image/*" 
-                      className="hidden" 
-                    />
-                  </div>
 
-                  {aiError && (
-                    <div className="p-3 bg-red-900/30 text-red-200 text-sm rounded-lg flex items-center gap-2">
-                      <AlertCircle size={16} /> {aiError}
-                    </div>
-                  )}
+                    {view !== 'manage' && (
+                        <div className="sticky top-0 z-10 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex justify-between items-center">
+                           <div className="font-bold text-lg text-white truncate max-w-[70%]">{festivalName || '未命名行程'}</div>
+                           {view === 'program' && <div className="text-xs text-slate-400 flex items-center gap-2"><span className="bg-purple-900/50 px-2 py-1 rounded text-purple-300">{mySchedule.length} 個選擇</span></div>}
+                        </div>
+                    )}
 
-                  <button 
-                    onClick={runAIImageImport}
-                    disabled={!selectedImage || aiLoading}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {aiLoading ? <Loader2 className="animate-spin" /> : <Sparkles size={18} />}
-                    {aiLoading ? 'AI 正在分析圖片中...' : '開始辨識'}
-                  </button>
+                    <main className="max-w-4xl mx-auto p-4 space-y-6 flex flex-col h-[calc(100vh-130px)]">
+                        {/* Manage View */}
+                        {view === 'manage' && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto pb-20">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => { setIsAddFormOpen(!isAddFormOpen); setEditingItem(null); }} className={`p-2 rounded-full border transition-colors shadow-lg ${isAddFormOpen ? 'bg-slate-800 border-slate-600 text-slate-300' : 'bg-purple-600 border-purple-500 text-white'}`}>{isAddFormOpen ? <X size={18} /> : <Plus size={18} />}</button>
+                                        <h2 className="text-2xl font-bold text-white">管理節目表</h2>
+                                    </div>
+                                    <button onClick={() => { setAiMode('import'); setImportDay(activeDay); setShowAIModal(true); }} className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-3 py-2 rounded-lg flex items-center gap-1"><Sparkles size={14} /> AI 圖片匯入</button>
+                                </div>
+                                <DayTabs />
+                                <AddPerformanceForm isOpen={isAddFormOpen} onAdd={addPerformance} onUpdate={updatePerformance} onDelete={(id) => removePerformance(null, id)} onCancel={() => setIsAddFormOpen(false)} editingItem={null} activeDay={activeDay} />
+                                <div className="space-y-4">
+                                    {getCurrentDayPerformances.length === 0 ? (
+                                        <div className="text-center py-10 border-2 border-dashed border-slate-800 rounded-xl"><p className="text-slate-500">此日目前沒有節目</p></div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {getCurrentDayPerformances.map(p => (
+                                                <div key={p.id} className="relative">
+                                                    <div onClick={() => toggleMySchedule(p.id)} className={`p-3 rounded-lg flex items-center justify-between group border cursor-pointer transition-all duration-200 select-none ${mySchedule.includes(p.id) ? 'bg-purple-900/30 border-purple-500 shadow-inner' : 'bg-slate-900/50 border-slate-800'} ${editingItem?.id === p.id ? 'border-purple-500 ring-1 ring-purple-500 bg-purple-900/10' : ''}`}>
+                                                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                            <div className="w-24 shrink-0 flex flex-col items-start gap-1"><span className="text-slate-400 font-mono text-xs">{p.startTime}</span><span className="text-xs font-bold text-purple-300 bg-purple-900/40 px-1.5 py-0.5 rounded border border-purple-700/50 truncate max-w-full">{p.stage}</span></div>
+                                                            <div className="truncate flex-1"><div className="font-bold text-white truncate flex items-center gap-2">{p.artist}{conflictIds.has(p.id) && mySchedule.includes(p.id) && <span className="text-yellow-400 text-xs font-bold flex items-center gap-1 bg-yellow-400/10 px-2 py-0.5 rounded">⚠️ 重疊</span>}</div><div className="text-xs text-slate-500 truncate">{p.startTime} - {p.endTime}</div></div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 pl-2">
+                                                            <button onClick={(e) => startEditing(e, p)} className={`p-2 rounded-full ${editingItem?.id === p.id ? 'text-purple-400' : 'text-slate-500 hover:text-purple-400'}`}><Edit size={16} /></button>
+                                                            <div className={`transition-transform duration-200 ${mySchedule.includes(p.id) ? 'scale-110' : 'scale-100 opacity-50'}`}><Heart size={20} fill={mySchedule.includes(p.id) ? "#a855f7" : "none"} className={mySchedule.includes(p.id) ? 'text-purple-500' : 'text-slate-600'} /></div>
+                                                        </div>
+                                                    </div>
+                                                    {editingItem?.id === p.id && <div className="relative"><div className="absolute left-6 top-[-8px] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-purple-500/50"></div><AddPerformanceForm isOpen={true} onUpdate={updatePerformance} onDelete={(id) => removePerformance(null, id)} onCancel={cancelEditing} editingItem={editingItem} activeDay={activeDay} isInline={true} /></div>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Program & Trips Views (reused from previous logic) */}
+                        {view === 'program' && (
+                            <div className="flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                 <div className="flex justify-between items-center mb-4 shrink-0 px-2">
+                                    <h2 className="text-xl font-bold text-white flex items-center gap-2"><LayoutGrid className="text-purple-500" size={20}/> 所有活動</h2>
+                                    {performances.length > 0 && <button onClick={() => { setAiMode('recommend'); setShowAIModal(true); }} className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-3 py-2 rounded-lg flex items-center gap-1"><Sparkles size={14} /> AI 排程助手</button>}
+                                </div>
+                                <DayTabs />
+                                {(() => {
+                                  const allDayPerformances = getCurrentDayPerformances; 
+                                  const uniqueStages = Array.from(new Set(allDayPerformances.map(p => p.stage))).sort();
+                                  if (allDayPerformances.length === 0) return <div className="text-center text-slate-500 py-8">本日無節目</div>;
+                                  return (
+                                    <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
+                                       <div className="flex gap-3 h-full px-1 min-w-min">
+                                        {uniqueStages.map(stage => {
+                                           const stagePerformances = allDayPerformances.filter(p => p.stage === stage);
+                                           return (
+                                            <div key={stage} className="flex-none w-[280px] flex flex-col h-full bg-slate-900/40 rounded-xl border border-slate-800/60 overflow-hidden">
+                                              <div className="p-3 bg-slate-800 border-b border-slate-700 text-center shrink-0"><h3 className="text-purple-300 font-bold text-md truncate">{stage}</h3></div>
+                                              <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                                                {stagePerformances.length > 0 ? (
+                                                  stagePerformances.map(perf => (
+                                                    <PerformanceCard key={perf.id} perf={perf} isSelected={mySchedule.includes(perf.id)} toggle={() => {}} isConflict={mySchedule.includes(perf.id) && conflictIds.has(perf.id)} readOnly={true} compact={true} />
+                                                  ))
+                                                ) : <div className="h-full flex items-center justify-center"><span className="text-slate-700 text-xs">無節目</span></div>}
+                                              </div>
+                                            </div>
+                                           );
+                                        })}
+                                        <div className="w-1 flex-none"></div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                            </div>
+                        )}
+
+                        {view === 'trips' && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto pb-20">
+                                <h2 className="text-2xl font-bold text-white flex items-center gap-2"><History className="text-purple-500" size={24}/> 行程</h2>
+                                {futureTrips.length > 0 && <div className="space-y-3"><h3 className="text-sm font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-2"><Sparkles size={14} /> 即將到來</h3>{futureTrips.map(item => <div key={item.id} className="bg-slate-900/80 border border-purple-500/30 rounded-xl p-4 flex justify-between items-center hover:border-purple-500 transition-colors shadow-lg shadow-purple-900/10"><div><div className="flex items-center gap-2 mb-1">{item.type === 'gig' ? <span className="bg-pink-900/50 text-pink-200 text-[10px] px-2 py-0.5 rounded border border-pink-800">專場</span> : <span className="bg-purple-900/50 text-purple-200 text-[10px] px-2 py-0.5 rounded border border-purple-800">音樂祭</span>}<h4 className="font-bold text-white text-lg">{item.name}</h4></div><div className="text-xs text-slate-400 mt-1 flex items-center gap-2"><Calendar size={12} /> {item.startDate || item.dateSaved} {item.endDate ? `- ${item.endDate}` : ''}</div></div><div className="flex items-center gap-2"><button onClick={() => loadFromHistory(item)} className="p-2 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-500">開啟</button><button onClick={(e) => deleteFromHistory(e, item.id)} className="p-2 text-slate-500 hover:text-red-400"><Trash2 size={16} /></button></div></div>)}</div>}
+                                <div className="space-y-3"><h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">過往回憶</h3>{pastTrips.length === 0 && futureTrips.length === 0 ? <div className="text-center py-12 border-2 border-dashed border-slate-800 rounded-xl text-slate-500"><FolderOpen size={32} className="mx-auto mb-2 opacity-50" /><p>尚無行程紀錄</p></div> : pastTrips.map(item => <div key={item.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex justify-between items-center opacity-70 hover:opacity-100 transition-all"><div><h4 className="font-bold text-white text-lg">{item.name}</h4><div className="text-xs text-slate-500 mt-1 flex items-center gap-2"><Calendar size={12} /> {item.startDate || item.dateSaved}</div></div><div className="flex items-center gap-2"><button onClick={() => loadFromHistory(item)} className="p-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold hover:bg-slate-700">回顧</button><button onClick={(e) => deleteFromHistory(e, item.id)} className="p-2 text-slate-600 hover:text-red-400"><Trash2 size={16} /></button></div></div>)}</div>
+                            </div>
+                        )}
+                    </main>
+
+                    <nav className="fixed bottom-0 w-full bg-slate-900 border-t border-slate-800 pb-safe z-50">
+                        <div className="flex justify-around max-w-4xl mx-auto">
+                            <button onClick={() => setView('manage')} className={`flex-1 py-4 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${view === 'manage' ? 'text-purple-400' : 'text-slate-500 hover:text-slate-300'}`}><List size={20} /> 設定/管理</button>
+                            <button onClick={() => setView('program')} className={`flex-1 py-4 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${view === 'program' ? 'text-purple-400' : 'text-slate-500 hover:text-slate-300'}`}><LayoutGrid size={20} /> 節目表</button>
+                            <button onClick={() => setView('trips')} className={`flex-1 py-4 flex flex-col items-center gap-1 text-xs font-medium transition-colors ${view === 'trips' ? 'text-purple-400' : 'text-slate-500 hover:text-slate-300'}`}><History size={20} /> 行程</button>
+                        </div>
+                    </nav>
+
+                    {showAIModal && (
+                        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+                            <div className="bg-slate-900 w-full max-w-lg rounded-2xl border border-purple-500/30 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                                <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-gradient-to-r from-purple-900/50 to-slate-900"><h3 className="text-lg font-bold text-white flex items-center gap-2"><Sparkles className="text-purple-400" size={20} /> {aiMode === 'import' ? 'AI 圖片節目表辨識' : 'AI 排程助手'}</h3><button onClick={() => { setShowAIModal(false); setAiError(''); setSelectedImage(null); }} className="text-slate-400 hover:text-white"><X size={24} /></button></div>
+                                <div className="p-6 overflow-y-auto">
+                                    {aiMode === 'import' ? (
+                                        <div className="space-y-4">
+                                            <p className="text-slate-300 text-sm">上傳音樂祭的時間表圖片，AI 將自動辨識內容並轉換成可編輯的資料。</p>
+                                            <div className="bg-slate-800/50 p-3 rounded-xl border border-slate-700 flex items-center justify-between"><span className="text-sm font-medium text-slate-300">這張圖片是哪一天的節目？</span><select value={importDay} onChange={(e) => setImportDay(e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg py-1.5 px-3 text-white text-sm outline-none focus:border-purple-500">{DAYS.map(d => <option key={d} value={d}>{d}</option>)}</select></div>
+                                            <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-700 hover:border-purple-500 rounded-xl p-8 text-center cursor-pointer transition-colors bg-slate-800/50">{selectedImage ? <img src={selectedImage} alt="Preview" className="max-h-60 mx-auto rounded-lg shadow-lg" /> : <div className="flex flex-col items-center gap-3 text-slate-400"><ImageIcon size={48} /><span>點擊選擇圖片或將圖片拖曳至此</span></div>}<input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" /></div>
+                                            {aiError && <div className="p-3 bg-red-900/30 text-red-200 text-sm rounded-lg flex items-center gap-2"><AlertCircle size={16} /> {aiError}</div>}
+                                            <button onClick={runAIImageImport} disabled={!selectedImage || aiLoading} className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2">{aiLoading ? <Loader2 className="animate-spin" /> : <Sparkles size={18} />}{aiLoading ? 'AI 正在分析圖片中...' : '開始辨識'}</button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <p className="text-slate-300 text-sm">告訴 AI 你喜歡什麼樣的音樂或氛圍，或是你的空閒時間，它會幫你挑選適合的表演。</p>
+                                            <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="例如：「我喜歡聽獨立搖滾」、「幫我安排下午三點後的行程」、「我想聽氣氛比較Chill的團」..." className="w-full h-32 bg-slate-950 border border-slate-700 rounded-xl p-4 text-white focus:border-purple-500 outline-none resize-none"></textarea>
+                                            {aiError && <div className="p-3 bg-red-900/30 text-red-200 text-sm rounded-lg flex items-center gap-2"><AlertCircle size={16} /> {aiError}</div>}
+                                            <button onClick={runAIRecommend} disabled={!aiPrompt.trim() || aiLoading} className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2">{aiLoading ? <Loader2 className="animate-spin" /> : <MessageSquare size={18} />}{aiLoading ? 'AI 正在思考最佳行程...' : '取得推薦'}</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-slate-300 text-sm">告訴 AI 你喜歡什麼樣的音樂或氛圍，或是你的空閒時間，它會幫你挑選適合的表演。</p>
-                  
-                  <textarea
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="例如：「我喜歡聽獨立搖滾」、「幫我安排下午三點後的行程」、「我想聽氣氛比較Chill的團」..."
-                    className="w-full h-32 bg-slate-950 border border-slate-700 rounded-xl p-4 text-white focus:border-purple-500 outline-none resize-none"
-                  ></textarea>
-
-                  {aiError && (
-                    <div className="p-3 bg-red-900/30 text-red-200 text-sm rounded-lg flex items-center gap-2">
-                      <AlertCircle size={16} /> {aiError}
-                    </div>
-                  )}
-
-                  <button 
-                    onClick={runAIRecommend}
-                    disabled={!aiPrompt.trim() || aiLoading}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {aiLoading ? <Loader2 className="animate-spin" /> : <MessageSquare size={18} />}
-                    {aiLoading ? 'AI 正在思考最佳行程...' : '取得推薦'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CSS for Bottom Safe Area on Mobile */}
-      <style>{`
-        .pb-safe {
-          padding-bottom: env(safe-area-inset-bottom, 20px);
-        }
-      `}</style>
-    </div>
-  );
-};
-
-export default App;
+            );
+        };
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
