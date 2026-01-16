@@ -108,9 +108,11 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
+        // 設定主模型 (2.5 Preview) 與 備用模型 (1.5 Flash)
+        const PRIMARY_MODEL = "gemini-2.5-flash-preview-09-2025";
+        const FALLBACK_MODEL = "gemini-1.5-flash";
 
-        // Helper: Call Gemini API
+        // Helper: Call Gemini API with Auto-Fallback
         const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
             const apiKey = userApiKey || ""; 
 
@@ -118,45 +120,69 @@
                 throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
-            const contents = [
-                {
-                    parts: [
-                        { text: prompt },
-                        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
-                    ]
-                }
-            ];
-
-            const payload = {
-                contents,
+            // 建立請求 Payload (共用)
+            const createPayload = () => ({
+                contents: [
+                    {
+                        parts: [
+                            { text: prompt },
+                            ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
+                        ]
+                    }
+                ],
                 generationConfig: {
                     responseMimeType: "application/json"
                 },
                 systemInstruction: {
                     parts: [{ text: systemPrompt }]
                 }
-            };
+            });
 
-            try {
+            // 執行單次 API 請求的內部函式
+            const executeRequest = async (model) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                
                 const response = await fetch(url, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(createPayload())
                 });
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    throw new Error(`API Error: ${response.status} ${errorData.error?.message || ''}`);
+                    const error = new Error(errorData.error?.message || `HTTP Error ${response.status}`);
+                    error.status = response.status; // 附加狀態碼以便判斷
+                    throw error;
                 }
+                
                 const data = await response.json();
                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (!text) throw new Error("No content generated");
                 
                 return JSON.parse(text);
+            };
+
+            try {
+                // 1. 優先嘗試主模型 (2.5)
+                return await executeRequest(PRIMARY_MODEL);
             } catch (error) {
-                console.error("Gemini API Call Failed:", error);
+                // 2. 判斷是否需要切換模型 
+                // 403: 權限不足/未啟用 (常見於新 Key 未啟用 2.5)
+                // 429: 請求過多 (Rate Limit)
+                // 503: 服務過載
+                if (error.status === 403 || error.status === 429 || error.status === 503) {
+                    console.warn(`Primary model (${PRIMARY_MODEL}) failed with status ${error.status}. Switching to fallback model (${FALLBACK_MODEL})...`);
+                    
+                    try {
+                        // 3. 嘗試備用模型 (1.5)
+                        return await executeRequest(FALLBACK_MODEL);
+                    } catch (fallbackError) {
+                        // 如果備用模型也失敗，拋出包含兩個錯誤的訊息
+                        throw new Error(`AI 服務暫時無法使用。\n主模型錯誤: ${error.message}\n備用模型錯誤: ${fallbackError.message}`);
+                    }
+                }
+                
+                // 其他錯誤 (如 JSON 解析失敗、Prompt 錯誤等) 直接拋出
                 throw error;
             }
         };
