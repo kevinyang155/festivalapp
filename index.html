@@ -90,7 +90,6 @@
         } from "firebase/firestore";
 
         // --- Firebase Configuration & Init ---
-        // Adapting to the current environment while keeping fallback
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             apiKey: "AIzaSyDKNyqJCEbI5uCSUc4ws7dKuyBZA2lRaOA",
             authDomain: "kevinwork-eb7cc.firebaseapp.com",
@@ -108,7 +107,6 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        // 定義模型優先順序清單：確保 gemini-2.5-flash-preview-09-2025 為第一優先
         const MODEL_SEQUENCE = [
             "gemini-2.5-flash-preview-09-2025",
             "gemini-2.5-flash-lite-preview-09-2025",
@@ -123,7 +121,6 @@
                 throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
             }
 
-            // 建立共用 Payload
             const createPayload = () => {
                 const payload = {
                     contents: [
@@ -141,16 +138,21 @@
                         parts: [{ text: systemPrompt }]
                     }
                 };
-                // 如果開啟搜尋，加入 Google Search 工具
                 if (useSearch) {
-                    payload.tools = [{ google_search: {} }];
+                    payload.tools = [{
+                        google_search_retrieval: {
+                            dynamic_retrieval_config: {
+                                mode: "MODE_DYNAMIC",
+                                dynamic_threshold: 0.3
+                            }
+                        }
+                    }];
                 }
                 return payload;
             };
 
             let lastError = null;
 
-            // 迴圈：依序嘗試模型清單
             for (const model of MODEL_SEQUENCE) {
                 try {
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -165,12 +167,10 @@
                         const errorData = await response.json().catch(() => ({}));
                         const errorMessage = errorData.error?.message || response.statusText;
                         
-                        // 建立錯誤物件並附加狀態碼
                         const error = new Error(`API Error: ${response.status} ${errorMessage}`);
                         error.status = response.status;
                         error.originalMessage = errorMessage;
                         
-                        // 標記是否為搜尋相關錯誤 (400 通常是 Search 工具權限問題)
                         if (useSearch && (response.status === 400 || response.status === 403)) {
                             error.isSearchError = true;
                         }
@@ -179,41 +179,42 @@
                     }
 
                     const data = await response.json();
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    const candidate = data.candidates?.[0];
+                    const text = candidate?.content?.parts?.[0]?.text;
+                    
                     if (!text) throw new Error("No content generated");
                     
-                    // 成功！直接回傳結果
-                    return JSON.parse(text);
+                    const result = JSON.parse(text);
+                    const groundingMetadata = candidate?.groundingMetadata;
+
+                    if (groundingMetadata && groundingMetadata.groundingChunks) {
+                        result.searchSources = groundingMetadata.groundingChunks
+                            .map(chunk => chunk.web?.uri ? { title: chunk.web.title, url: chunk.web.uri } : null)
+                            .filter(Boolean);
+                    }
+                    
+                    return result;
 
                 } catch (error) {
                     lastError = error;
                     
-                    // 錯誤處理策略：
-
-                    // 1. [搜尋權限錯誤]：如果是開啟搜尋時發生 400/403 或 Key 無效，
-                    // 這通常代表該 Key 沒有啟用搜尋的權限 (未綁卡)。
-                    // 我們不換模型，而是直接拋出錯誤，讓外層函式決定是否「關閉搜尋」重試。
                     if (useSearch && (error.isSearchError || error.message.includes("API key not valid"))) {
-                        throw error; // 拋給 runAIRecommend 處理降級
+                        throw error; 
                     }
 
-                    // 2. [速率限制/忙碌]：如果是 429, 503, 404，嘗試下一個模型
                     if (error.status === 429 || error.status === 503 || error.status === 404) {
                         console.warn(`Model ${model} failed with status ${error.status}. Switching to next model...`);
                         continue; 
                     }
 
-                    // 3. [嚴重錯誤]：API Key 格式錯誤或無效 (非搜尋引起)，直接停止
                     if (error.message.includes("API key not valid") || error.status === 400) {
-                         throw new Error("API Key 無效。請檢查 Key 是否正確或已被刪除。");
+                         throw new Error(`API Key 無效或請求格式錯誤 (${error.status})。請檢查 Key 設定。`);
                     }
 
-                    // 4. 其他未知錯誤，拋出
                     throw error;
                 }
             }
 
-            // 如果迴圈跑完，所有模型都失敗
             let finalMsg = "AI 服務暫時無法使用 (所有備用模型皆忙碌)。";
             if (lastError?.status === 429) {
                 finalMsg = "系統流量已達上限，請稍後再試。";
@@ -223,7 +224,6 @@
             throw new Error(finalMsg);
         };
 
-        // Helper: Convert file to Base64
         const fileToBase64 = (file) => {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -232,8 +232,6 @@
                 reader.onerror = (error) => reject(error);
             });
         };
-
-        // --- Sub-components ---
 
         const Notification = ({ message, type, onClose }) => {
             if (!message) return null;
@@ -252,14 +250,135 @@
             );
         };
 
-        // New Component: Artist Info Modal (Simple Info)
+        // --- Recommendation Review Modal ---
+        const RecommendationReviewModal = ({ isOpen, onClose, recResult, allPerformances, onConfirm }) => {
+            const [selectedIds, setSelectedIds] = useState([]);
+
+            useEffect(() => {
+                if (isOpen && recResult?.recommendations) {
+                    setSelectedIds(recResult.recommendations.map(r => r.id));
+                }
+            }, [isOpen, recResult]);
+
+            if (!isOpen || !recResult) return null;
+
+            const toggleSelection = (id) => {
+                setSelectedIds(prev => 
+                    prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+                );
+            };
+
+            const handleConfirm = () => {
+                onConfirm(selectedIds);
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-[#121212] w-full max-w-sm rounded-2xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] flex flex-col max-h-[85vh] overflow-hidden relative">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-600/20 blur-[50px] rounded-full pointer-events-none"></div>
+                        
+                        {/* Header */}
+                        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/[0.02] shrink-0 relative z-10">
+                            <div>
+                                <h3 className="text-base font-black text-white flex items-center gap-2 italic">
+                                    <Sparkles className="text-fuchsia-500" size={16} /> 
+                                    AI 推薦與介紹
+                                </h3>
+                                <p className="text-[10px] text-gray-400 mt-0.5">為您找到 {recResult.recommendations.length} 個合適的表演</p>
+                            </div>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors bg-white/5 p-1.5 rounded-full">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar relative z-10">
+                            {/* Summary Box */}
+                            <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 p-3 rounded-xl">
+                                <p className="text-xs text-fuchsia-100 leading-relaxed italic">
+                                    "{recResult.summary || '以下是 AI 為您精選的推薦行程！'}"
+                                </p>
+                            </div>
+
+                            {/* List */}
+                            <div className="space-y-3">
+                                {recResult.recommendations.map((rec) => {
+                                    const perf = allPerformances.find(p => p.id === rec.id);
+                                    if (!perf) return null;
+                                    const isSelected = selectedIds.includes(rec.id);
+
+                                    return (
+                                        <div 
+                                            key={rec.id}
+                                            onClick={() => toggleSelection(rec.id)}
+                                            className={`p-3 rounded-xl border transition-all cursor-pointer flex gap-3 items-start group ${
+                                                isSelected 
+                                                ? 'bg-white/10 border-fuchsia-500/50' 
+                                                : 'bg-black/40 border-white/5 opacity-60 hover:opacity-80'
+                                            }`}
+                                        >
+                                            {/* Checkbox Visual */}
+                                            <div className={`mt-1 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                                                isSelected ? 'bg-fuchsia-600 border-fuchsia-500' : 'border-gray-600'
+                                            }`}>
+                                                {isSelected && <Check size={12} className="text-white" />}
+                                            </div>
+                                            
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className={`font-bold text-sm ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                                                        {perf.band}
+                                                    </h4>
+                                                    <span className="text-[9px] font-mono text-gray-500 bg-black/50 px-1.5 py-0.5 rounded border border-white/5">
+                                                        {perf.day}
+                                                    </span>
+                                                </div>
+                                                <div className="text-[10px] text-gray-500 mb-1.5 flex items-center gap-2">
+                                                    <span>{perf.startTime} - {perf.endTime}</span>
+                                                    <span>•</span>
+                                                    <span>{perf.stage}</span>
+                                                </div>
+                                                {/* AI Intro */}
+                                                <div className="text-[10px] text-gray-300 leading-snug bg-black/20 p-2 rounded-lg border border-white/5 relative">
+                                                    <span className="text-fuchsia-400 font-bold block mb-1">樂團介紹:</span>
+                                                    <span className="italic">{rec.intro || rec.reason}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            
+                            {/* Disclaimer */}
+                            <div className="flex items-center justify-end gap-1 text-[9px] text-gray-500 pt-2 opacity-70">
+                                <AlertCircle size={10} />
+                                <span>AI 資訊可能會有誤，請以官方資訊為準</span>
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-white/10 bg-[#121212] shrink-0 relative z-10">
+                            <button 
+                                onClick={handleConfirm}
+                                disabled={selectedIds.length === 0}
+                                className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-fuchsia-500/30 text-xs"
+                            >
+                                <ThumbsUp size={16} />
+                                加入 {selectedIds.length} 個行程
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const ArtistInfoModal = ({ isOpen, onClose, data, loading }) => {
             if (!isOpen) return null;
 
             return (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-fadeIn">
                     <div className="bg-[#121212] w-full max-w-sm rounded-2xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] relative overflow-hidden flex flex-col max-h-[80vh]">
-                        {/* Header */}
                         <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/[0.02]">
                             <h3 className="text-lg font-black text-white flex items-center gap-2 italic truncate pr-2">
                                 <Search className="text-fuchsia-500" size={18} /> 
@@ -269,8 +388,6 @@
                                 <X size={20} />
                             </button>
                         </div>
-
-                        {/* Content */}
                         <div className="p-5 overflow-y-auto">
                             {loading ? (
                                 <div className="flex flex-col items-center justify-center py-8 space-y-4">
@@ -310,7 +427,6 @@
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
                     <div className="bg-[#121212] w-full max-w-sm rounded-xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] p-5 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-600/20 blur-[50px] rounded-full pointer-events-none"></div>
-                        
                         <div className="flex justify-between items-center mb-4 relative z-10">
                             <h3 className="text-lg font-black text-white flex items-center gap-2 italic">
                                 <Settings className="text-fuchsia-400" size={20} /> SETTINGS
@@ -319,7 +435,6 @@
                                 <X size={20} />
                             </button>
                         </div>
-
                         <div className="space-y-4 relative z-10">
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-bold text-fuchsia-400 uppercase tracking-widest flex items-center gap-2">
@@ -336,7 +451,6 @@
                                     請至 Google AI Studio 申請 Key。注意：不要填入 Firebase 的 Key。
                                 </p>
                             </div>
-
                             <button 
                                 onClick={() => { onSave(keyInput); onClose(); }}
                                 className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-2.5 rounded-lg transition-all shadow-lg hover:shadow-fuchsia-900/50 transform hover:scale-[1.02] text-xs"
@@ -349,7 +463,6 @@
             );
         };
 
-        // Account Modal
         const AccountModal = ({ isOpen, onClose, user, onLogin, onLogout }) => {
             if (!isOpen) return null;
 
@@ -357,7 +470,6 @@
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
                     <div className="bg-[#121212] w-full max-w-sm rounded-xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] p-5 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-600/20 blur-[50px] rounded-full pointer-events-none"></div>
-                        
                         <div className="flex justify-between items-center mb-4 relative z-10">
                             <h3 className="text-lg font-black text-white flex items-center gap-2 italic">
                                 <User className="text-fuchsia-400" size={20} /> ACCOUNT
@@ -366,7 +478,6 @@
                                 <X size={20} />
                             </button>
                         </div>
-
                         <div className="space-y-4 relative z-10">
                             <div className="bg-black/30 rounded-lg p-4 border border-white/10 flex flex-col items-center justify-center gap-3">
                                 <div className="w-16 h-16 bg-gradient-to-br from-fuchsia-600 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
@@ -381,7 +492,6 @@
                                     </div>
                                 </div>
                             </div>
-
                             <button 
                                 onClick={() => { onLogout(); onClose(); }}
                                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold transition-colors border border-red-500/20"
@@ -395,7 +505,6 @@
             );
         };
 
-        // Delete Confirmation Modal
         const DeleteConfirmModal = ({ isOpen, onClose, onConfirm }) => {
             if (!isOpen) return null;
             return (
@@ -428,14 +537,11 @@
             );
         };
 
-        // New: Login Page Component
         const LoginPage = ({ onLogin, onGuestLogin, error }) => {
             return (
                 <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-                    {/* Background Ambience */}
                     <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-purple-900/20 blur-[120px] rounded-full pointer-events-none"></div>
                     <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-fuchsia-900/20 blur-[100px] rounded-full pointer-events-none"></div>
-
                     <div className="relative z-10 w-full max-w-sm text-center space-y-8">
                         <div className="space-y-2">
                             <div className="bg-gradient-to-br from-fuchsia-600 to-purple-600 w-20 h-20 rounded-2xl mx-auto flex items-center justify-center shadow-[0_0_40px_rgba(192,38,211,0.4)] mb-6 animate-fadeIn">
@@ -446,7 +552,6 @@
                             </h1>
                             <p className="text-gray-400 text-sm font-medium tracking-widest uppercase">Your Ultimate Gig Planner</p>
                         </div>
-
                         <div className="space-y-4 pt-4 animate-fadeInUp">
                             <button 
                                 onClick={onLogin}
@@ -455,13 +560,11 @@
                                 <LogIn size={20} />
                                 Sign in with Google
                             </button>
-                            
                             <div className="relative flex items-center py-2">
                                 <div className="flex-grow border-t border-white/10"></div>
                                 <span className="flex-shrink-0 mx-4 text-gray-500 text-xs font-bold uppercase tracking-wider">OR</span>
                                 <div className="flex-grow border-t border-white/10"></div>
                             </div>
-
                             <button 
                                 onClick={onGuestLogin}
                                 className="w-full bg-white/5 text-gray-300 font-bold py-4 rounded-xl flex items-center justify-center gap-3 hover:bg-white/10 transition-all border border-white/10 active:scale-[0.98]"
@@ -470,7 +573,6 @@
                                 Continue as Guest
                             </button>
                         </div>
-
                         {error && (
                             <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-xs font-bold flex items-center gap-3 text-left animate-fadeIn">
                                 <AlertTriangle size={24} className="shrink-0" />
@@ -618,25 +720,18 @@
         // --- Main App ---
 
         const App = () => {
-            // Auth & User State
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
             const [loginError, setLoginError] = useState(null);
-
-            // App Data State
             const [view, setView] = useState('manage'); 
             const [festivalName, setFestivalName] = useState('');
-            const [eventType, setEventType] = useState('festival'); // 'festival' or 'gig'
+            const [eventType, setEventType] = useState('festival'); 
             const [startDate, setStartDate] = useState(''); 
             const [endDate, setEndDate] = useState(''); 
             const [performances, setPerformances] = useState([]);
             const [mySchedule, setMySchedule] = useState([]); 
             const [history, setHistory] = useState([]); 
-            
-            // Dynamic Days State
             const [days, setDays] = useState(['Day 1']);
-
-            // UI State
             const [isAddFormOpen, setIsAddFormOpen] = useState(false); 
             const [activeDay, setActiveDay] = useState('Day 1');
             const [editingItem, setEditingItem] = useState(null); 
@@ -644,24 +739,20 @@
             const [showSettings, setShowSettings] = useState(false);
             const [showAccount, setShowAccount] = useState(false); 
             const [apiKey, setApiKey] = useState('');
-            
-            // Delete Modal State
             const [itemToDelete, setItemToDelete] = useState(null);
-
-            // AI State
             const [showAIModal, setShowAIModal] = useState(false);
-            const [aiMode, setAiMode] = useState('import'); // 'import' or 'recommend'
+            const [aiMode, setAiMode] = useState('import'); 
             const [aiLoading, setAiLoading] = useState(false);
             const [aiError, setAiError] = useState('');
             const [aiPrompt, setAiPrompt] = useState('');
             const [selectedImage, setSelectedImage] = useState(null);
             const [importDay, setImportDay] = useState('Day 1');
             const fileInputRef = useRef(null);
+            const [recResult, setRecResult] = useState(null);
+            const [showRecReview, setShowRecReview] = useState(false);
 
-            // --- Auth Init ---
             useEffect(() => {
                 const initAuth = async () => {
-                // Check for custom token provided by environment
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 }
@@ -671,7 +762,6 @@
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     setAuthLoading(false);
-                    // Clear login errors on successful auth state change
                     if (u) setLoginError(null);
                 });
                 return () => unsubscribe();
@@ -715,27 +805,23 @@
                 }
             };
 
-            // --- Local Storage for API Key ---
             useEffect(() => {
                 const savedKey = localStorage.getItem('gemini_api_key');
                 if (savedKey) setApiKey(savedKey);
             }, []);
 
             const handleSaveApiKey = (key) => {
-                // 修正：儲存時自動去除空白
                 const trimmedKey = key ? key.trim() : '';
                 setApiKey(trimmedKey);
                 localStorage.setItem('gemini_api_key', trimmedKey);
                 showNotification("API Key 已儲存 (已自動去除空白)");
             };
 
-            // --- Firestore History Sync ---
             useEffect(() => {
                 if (!user) {
                     setHistory([]);
                     return;
                 }
-                // NOTE: Updated path to be fully compliant with environment rules
                 const historyRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'history');
                 const q = query(historyRef);
                 
@@ -749,16 +835,13 @@
                 return () => unsubscribe();
             }, [user]);
 
-            // --- Split History Logic ---
             const { upcomingTrips, pastTrips } = useMemo(() => {
                 const today = new Date().toISOString().split('T')[0];
                 const upcoming = [];
                 const past = [];
 
                 history.forEach(item => {
-                    // Check start date first, fallback to saved date
                     const checkDate = item.startDate || item.dateSaved.split('T')[0];
-                    
                     if (checkDate >= today) {
                         upcoming.push(item);
                     } else {
@@ -766,14 +849,12 @@
                     }
                 });
 
-                // Sort upcoming: Closest date first (Ascending)
                 upcoming.sort((a, b) => {
                     const dateA = a.startDate || a.dateSaved;
                     const dateB = b.startDate || b.dateSaved;
                     return new Date(dateA) - new Date(dateB);
                 });
 
-                // Sort past: Most recent date first (Descending)
                 past.sort((a, b) => {
                     const dateA = a.startDate || a.dateSaved;
                     const dateB = b.startDate || b.dateSaved;
@@ -783,31 +864,24 @@
                 return { upcomingTrips: upcoming, pastTrips: past };
             }, [history]);
 
-            // --- Date Logic ---
             useEffect(() => {
                 if (startDate) {
                     if (eventType === 'gig') {
                         setDays(['Day 1']);
                         if (endDate !== startDate) setEndDate(startDate);
                     } else {
-                        // Festival Mode: Calculate days
                         if (endDate && endDate >= startDate) {
                             const start = new Date(startDate);
                             const end = new Date(endDate);
                             const diffTime = Math.abs(end - start);
                             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-                            
-                            // Cap at reasonable max to prevent crashes
                             const count = Math.min(diffDays, 14); 
                             const newDays = Array.from({length: count}, (_, i) => `Day ${i + 1}`);
-                            
-                            // Only update if changed
                             if (JSON.stringify(newDays) !== JSON.stringify(days)) {
                                 setDays(newDays);
                                 if (!newDays.includes(activeDay)) setActiveDay('Day 1');
                             }
                         } else {
-                            // Default to 1 day if end date not set or invalid
                             if (JSON.stringify(days) !== JSON.stringify(['Day 1'])) {
                                 setDays(['Day 1']);
                             }
@@ -816,8 +890,6 @@
                 }
             }, [startDate, endDate, eventType]);
 
-
-            // --- Actions ---
             const showNotification = (message, type = 'success') => {
                 setNotification({ message, type });
                 setTimeout(() => setNotification({ message: '', type: '' }), 3000);
@@ -839,16 +911,13 @@
 
             const saveCurrentToHistory = async () => {
                 if (!user) return;
-                // Use trimmed name for check
                 const trimmedName = festivalName.trim();
                 if (!trimmedName) {
                     showNotification('請輸入活動名稱', 'error');
                     return;
                 }
                 
-                // 修正：檢查是否已有相同名稱與開始日期的紀錄
                 const existingEntry = history.find(h => h.name === trimmedName && h.startDate === startDate);
-                // 如果有，使用舊的 ID (覆蓋)，否則建立新 ID
                 const docId = existingEntry ? existingEntry.id : Date.now().toString();
 
                 const entryData = {
@@ -864,9 +933,7 @@
 
                 try {
                     await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', docId), entryData);
-                    // 顯示更新或儲存成功的訊息
                     showNotification(`行程 "${trimmedName}" ${existingEntry ? '已更新' : '已儲存'}！`);
-                    // Clear after save automatically
                     startNewFestival(false);
                 } catch (error) {
                     console.error("Error saving:", error);
@@ -890,7 +957,6 @@
                 showNotification(`已載入 "${entry.name}"`);
             };
 
-            // Fixed Delete Handler using State
             const requestDeleteHistory = (e, id) => {
                 e.stopPropagation();
                 setItemToDelete(id);
@@ -901,14 +967,13 @@
                 try {
                     await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', itemToDelete));
                     showNotification('已刪除紀錄');
-                    setItemToDelete(null); // Close modal
+                    setItemToDelete(null); 
                 } catch (error) {
                     console.error(error);
                     showNotification("刪除失敗", "error");
                 }
             };
 
-            // --- CRUD Operations ---
             const addPerformance = (perf) => {
                 setPerformances(prev => [...prev, perf]);
                 setIsAddFormOpen(false);
@@ -935,7 +1000,6 @@
                 });
             };
 
-            // --- AI Logic ---
             const handleImageUpload = async (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -949,7 +1013,6 @@
                 setAiLoading(true);
                 setAiError('');
 
-                // 修正：要求 AI 回傳 stageOrder (index)，用於排序舞台
                 const systemInstruction = `
                     You are a data extraction assistant for a music festival planner.
                     Analyze the image (timetable/lineup).
@@ -965,36 +1028,27 @@
 
                 try {
                     const base64Data = selectedImage.split(',')[1];
-                    // 圖片辨識不需要搜尋，保持 useSearch = false
                     const result = await callGemini(`Extract schedule for day ${importDay}`, base64Data, systemInstruction, apiKey, false);
                     
                     if (Array.isArray(result)) {
-                        // Merging Logic: Same Stage + Same StartTime -> Merge
                         const mergedMap = new Map();
 
                         result.forEach(rawItem => {
-                            // Normalize
                             const stage = (rawItem.stage || "Main Stage").trim();
                             const startTime = (rawItem.startTime || "").trim();
                             const band = (rawItem.band || "").trim();
                             const endTime = (rawItem.endTime || "").trim();
                             const stageOrder = rawItem.stageOrder !== undefined ? rawItem.stageOrder : 999;
 
-                            // Skip if no band name found
                             if (!band) return;
 
-                            // Unique Key: Stage + StartTime (Case-insensitive stage)
                             const key = `${stage.toLowerCase()}_${startTime}`;
 
                             if (mergedMap.has(key)) {
                                 const existing = mergedMap.get(key);
-                                
-                                // 1. Merge Band Name if different
                                 if (!existing.band.includes(band)) {
                                     existing.band = `${existing.band} / ${band}`;
                                 }
-
-                                // 2. Extend EndTime if new item is longer
                                 if (endTime && (!existing.endTime || endTime > existing.endTime)) {
                                     existing.endTime = endTime;
                                 }
@@ -1002,11 +1056,11 @@
                                 mergedMap.set(key, {
                                     ...rawItem,
                                     stage,
-                                    stageOrder, // 儲存排序資訊
+                                    stageOrder, 
                                     startTime,
                                     endTime,
                                     band,
-                                    day: importDay // Enforce selected day
+                                    day: importDay 
                                 });
                             }
                         });
@@ -1018,7 +1072,6 @@
                         }));
                         
                         setPerformances(prev => {
-                            // User requested overwrite logic: Remove existing events for the importDay
                             const existingFiltered = prev.filter(p => p.day !== importDay);
                             return [...existingFiltered, ...newItems];
                         });
@@ -1043,21 +1096,30 @@
                     You are a festival guide. User gives preferences.
                     You have access to: ${JSON.stringify(performances.map(p => ({ id: p.id, band: p.band, style: "unknown" })))}.
                     Select matching performance IDs based on user's taste.
+                    For each selected band, provide a **brief introduction** of the band (style, background, famous for...) in Traditional Chinese. Do NOT assume why the user likes it, just introduce the band objectively.
                     Return JSON: { 
-                        "selectedIds": [string], 
-                        "message": string (Traditional Chinese comment) 
+                        "recommendations": [
+                            { "id": "performance_id", "intro": "Band introduction in Traditional Chinese" }
+                        ], 
+                        "summary": "Overall comment in Traditional Chinese" 
                     }
                 `;
 
                 try {
-                    // 自動降級機制：先嘗試用 Search (true)
                     const processResult = (result) => {
-                        if (result.selectedIds && result.selectedIds.length > 0) {
-                            const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
-                            setMySchedule(prev => [...prev, ...newIds]);
-                            setShowAIModal(false);
+                        if (result.recommendations && result.recommendations.length > 0) {
+                            setRecResult(result);
+                            setShowRecReview(true); 
+                            setShowAIModal(false);  
                             setAiPrompt('');
-                            showNotification(result.message || `AI 已為您加入 ${newIds.length} 個行程！`);
+                        } else if (result.selectedIds) {
+                             setRecResult({
+                                 recommendations: result.selectedIds.map(id => ({ id, intro: "AI 推薦行程 (無詳細介紹)" })),
+                                 summary: result.message || "以下是為您推薦的行程"
+                             });
+                             setShowRecReview(true);
+                             setShowAIModal(false);
+                             setAiPrompt('');
                         } else {
                             showNotification("AI 找不到符合的行程，請嘗試更換描述。", "error");
                         }
@@ -1067,12 +1129,10 @@
                         const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, true);
                         processResult(result);
                     } catch (searchError) {
-                        // 捕捉錯誤：如果是搜尋引起的權限問題，自動降級
                         if (searchError.isSearchError || searchError.message.includes("API Key 無效")) {
                             console.warn("搜尋模式失敗，嘗試降級為內建知識庫模式...", searchError);
                             showNotification("搜尋功能需綁定帳單，已自動切換至免費內建知識庫...", "success");
                             
-                            // 降級重試：useSearch = false
                             const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, false);
                             processResult(result);
                         } else {
@@ -1086,35 +1146,37 @@
                 }
             };
 
-            // --- Computed Data ---
+            const handleConfirmRecommendations = (selectedIds) => {
+                if (selectedIds && selectedIds.length > 0) {
+                    const newIds = selectedIds.filter(id => !mySchedule.includes(id));
+                    setMySchedule(prev => [...prev, ...newIds]);
+                    showNotification(`已成功加入 ${newIds.length} 個行程！`);
+                }
+            };
+
             const currentDayPerformances = useMemo(() => {
                 return performances
                     .filter(p => p.day === activeDay)
                     .sort((a, b) => a.startTime.localeCompare(b.startTime));
             }, [performances, activeDay]);
 
-            // 修正：Unique Stages 排序邏輯
             const uniqueStages = useMemo(() => {
-                // 取得所有舞台與其對應的順序 (若無順序則設為 999)
                 const stagesWithOrder = currentDayPerformances.map(p => ({
                     name: p.stage,
                     order: p.stageOrder !== undefined ? p.stageOrder : 999
                 }));
 
-                // 建立 Map 以去重複，並保留最小的 order
                 const uniqueMap = new Map();
                 stagesWithOrder.forEach(s => {
                     if (!uniqueMap.has(s.name)) {
                         uniqueMap.set(s.name, s.order);
                     } else {
-                        // 如果已經存在，檢查是否新的 order 比較小 (比較靠左)
                         if (s.order < uniqueMap.get(s.name)) {
                             uniqueMap.set(s.name, s.order);
                         }
                     }
                 });
 
-                // 依照 order 排序，如果 order 一樣則照字母排序
                 return Array.from(uniqueMap.keys()).sort((a, b) => {
                     const orderA = uniqueMap.get(a);
                     const orderB = uniqueMap.get(b);
@@ -1142,18 +1204,14 @@
                 return conflictSet;
             }, [mySchedule, performances]);
 
-            // --- Auth Loading Screen ---
             if (authLoading) {
                 return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="text-fuchsia-500 animate-spin" size={32} /></div>;
             }
 
-            // --- LOGIN PAGE (Render if no user) ---
             if (!user) {
                 return <LoginPage onLogin={handleGoogleLogin} onGuestLogin={handleGuestLogin} error={loginError} />;
             }
 
-            // --- MAIN APP (Render if user logged in) ---
-            // Helper for rendering trip cards
             const TripCard = ({ item }) => (
                 <div key={item.id} className="bg-[#121212] border border-white/10 rounded-xl p-4 flex justify-between items-center hover:border-fuchsia-500/50 transition-all group shadow-lg hover:shadow-fuchsia-900/20 relative overflow-hidden">
                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-fuchsia-600 to-purple-600"></div>
@@ -1171,7 +1229,6 @@
                             <span className="text-gray-400">{item.performances?.length || 0} ACTS</span>
                         </div>
                     </div>
-                    {/* Changed: Buttons always visible */}
                     <div className="flex gap-2">
                         <button onClick={() => loadFromHistory(item)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white backdrop-blur-sm"><Upload size={14}/></button>
                         <button onClick={(e) => requestDeleteHistory(e, item.id)} className="p-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 rounded-lg backdrop-blur-sm"><Trash2 size={14}/></button>
@@ -1181,7 +1238,6 @@
 
             return (
                 <div className="min-h-screen bg-[#050505] text-gray-100 font-sans pb-20 selection:bg-fuchsia-500 selection:text-white relative overflow-hidden">
-                {/* Background Ambience */}
                 <div className="fixed inset-0 pointer-events-none">
                     <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 blur-[100px] rounded-full"></div>
                     <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-fuchsia-900/20 blur-[100px] rounded-full"></div>
@@ -1189,7 +1245,6 @@
 
                 <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
                 
-                {/* Modals */}
                 <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
                 <AccountModal 
                     isOpen={showAccount} 
@@ -1200,11 +1255,16 @@
                 />
                 <DeleteConfirmModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={confirmDeleteHistory} />
                 
-                {/* ... existing header and main content ... */}
-                {/* --- Top Bar --- */}
+                <RecommendationReviewModal 
+                    isOpen={showRecReview} 
+                    onClose={() => setShowRecReview(false)} 
+                    recResult={recResult} 
+                    allPerformances={performances}
+                    onConfirm={handleConfirmRecommendations}
+                />
+
                 <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5">
                     <div className="max-w-2xl mx-auto px-4 py-2 space-y-2">
-                        {/* Title Row */}
                         <div className="flex justify-between items-center">
                             <div className="flex items-center space-x-2 group">
                                 <div className="bg-gradient-to-br from-fuchsia-600 to-purple-600 p-1.5 rounded-lg shadow-[0_0_15px_rgba(192,38,211,0.5)] group-hover:shadow-[0_0_25px_rgba(192,38,211,0.8)] transition-all duration-500">
@@ -1225,11 +1285,8 @@
                             </div>
                         </div>
 
-                        {/* Config Row (Manage Mode) */}
                         {view === 'manage' && (
                             <div className="flex flex-col gap-2 animate-fadeIn">
-                                
-                                {/* Row 1: Type & Name */}
                                 <div className="flex gap-2 w-full">
                                     <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/5 shrink-0 h-8">
                                         <button onClick={() => setEventType('festival')} className={`px-2 rounded-md flex items-center gap-1 transition-all h-full ${eventType === 'festival' ? 'bg-fuchsia-600 text-white shadow-lg' : 'text-gray-500'}`}><Ticket size={12}/></button>
@@ -1242,8 +1299,6 @@
                                         className="flex-1 min-w-0 bg-white/5 border border-white/5 rounded-lg py-1 px-3 text-xs font-bold text-white focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 outline-none transition-all placeholder-gray-600 h-8"
                                     />
                                 </div>
-                                
-                                {/* Row 2: Date Pickers (Full Width) - Compact Mode */}
                                 <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-lg border border-white/5 hover:border-white/20 transition-colors h-7 w-full">
                                     <Calendar size={12} className="text-white shrink-0 ml-1"/>
                                     <input 
@@ -1252,7 +1307,6 @@
                                         style={{ colorScheme: 'dark' }}
                                         onChange={(e) => { 
                                             setStartDate(e.target.value); 
-                                            // Auto-fill end date if not set or if using festival mode default convenience
                                             if(eventType === 'festival') setEndDate(e.target.value); 
                                         }} 
                                         className="bg-transparent text-[10px] font-bold text-gray-200 outline-none flex-1 uppercase text-center tracking-wide" 
@@ -1278,16 +1332,11 @@
                     </div>
                 </header>
 
-                {/* --- Main Content --- */}
                 <main className="max-w-2xl mx-auto px-4 py-4 space-y-4 relative z-10">
                     
-                    {/* View: MANAGE */}
                     {view === 'manage' && (
                         <div className="space-y-4 animate-fadeIn">
-                            {/* Tools - Modified Layout */}
                             <div className="flex flex-col gap-2 mb-1"> 
-                                
-                                {/* Days Scroll Area */}
                                 <div className="w-full overflow-x-auto no-scrollbar pb-1">
                                     <div className="flex gap-2 items-center">
                                         {days.map(d => (
@@ -1306,7 +1355,6 @@
                                     </div>
                                 </div>
                                 
-                                {/* Actions Row */}
                                 <div className="flex justify-between items-center pt-2 border-t border-white/5 mt-1">
                                     <span className="text-[9px] text-gray-500 font-bold tracking-widest uppercase">ACTIONS</span>
                                     <div className="flex gap-2">
@@ -1325,10 +1373,8 @@
                                 </div>
                             </div>
 
-                            {/* Form */}
                             <AddPerformanceForm isOpen={isAddFormOpen} onAdd={addPerformance} onUpdate={updatePerformance} onDelete={removePerformance} onCancel={() => setIsAddFormOpen(false)} editingItem={null} activeDay={activeDay} days={days} />
 
-                            {/* List */}
                             <div className="space-y-2">
                                 {currentDayPerformances.length === 0 ? (
                                     <div className="text-center py-12 border-2 border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
@@ -1370,14 +1416,11 @@
                         </div>
                     )}
 
-                    {/* View: PROGRAM (Timeline) */}
                     {view === 'program' && (
                         <div className="h-[calc(100vh-140px)] flex flex-col animate-fadeIn">
-                            {/* Header & Tools */}
                             <div className="flex justify-between items-center mb-1 shrink-0">
                                 <div className="flex flex-col">
                                     <h2 className="text-white font-black text-lg italic tracking-wide truncate max-w-[200px]">{festivalName || 'UNTITLED FEST'}</h2>
-                                    {/* Added: Stats Display */}
                                     <div className="text-[10px] text-gray-400 font-medium mt-0.5">
                                         已選 <span className="text-fuchsia-400 font-bold">{mySchedule.length}</span> / 共 {performances.length} 團
                                     </div>
@@ -1385,14 +1428,12 @@
                                 <button onClick={() => { setAiMode('recommend'); setShowAIModal(true); }} className="text-[9px] bg-white text-black font-black px-3 py-1.5 rounded-full flex items-center gap-1 hover:scale-105 transition-transform shadow-lg shadow-white/20"><Sparkles size={10} className="text-fuchsia-600" /> AI 推薦</button>
                             </div>
                             
-                            {/* Days Tab */}
                             <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3 shrink-0 py-2">
                                 {days.map(d => (
                                     <button key={d} onClick={() => setActiveDay(d)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap border transition-all ${activeDay === d ? 'bg-fuchsia-600 border-fuchsia-500 text-white shadow-[0_0_15px_rgba(192,38,211,0.4)]' : 'bg-transparent border-white/10 text-gray-500 hover:text-white'}`}>{d}</button>
                                 ))}
                             </div>
 
-                            {/* Columns */}
                             <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
                                 <div className="flex gap-3 h-full px-1 min-w-min">
                                     {currentDayPerformances.length === 0 ? <div className="text-gray-600 m-auto text-xs font-bold tracking-widest">NO GIGS TODAY</div> : uniqueStages.map(stage => (
@@ -1404,7 +1445,7 @@
                                                 {currentDayPerformances.filter(p => p.stage === stage).map(p => (
                                                     <div 
                                                         key={p.id} 
-                                                        onClick={() => toggleMySchedule(p.id)} // Click to Toggle
+                                                        onClick={() => toggleMySchedule(p.id)} 
                                                         className={`p-3 rounded-lg border backdrop-blur-md transition-all cursor-pointer ${
                                                             mySchedule.includes(p.id) 
                                                             ? 'bg-fuchsia-600/20 border-fuchsia-500/50 shadow-[0_0_15px_rgba(192,38,211,0.15)] opacity-100' 
@@ -1426,7 +1467,6 @@
                         </div>
                     )}
 
-                    {/* View: TRIPS (History) */}
                     {view === 'trips' && (
                         <div className="space-y-6 animate-fadeIn pb-20">
                             <div className="flex items-center gap-2 mb-2">
@@ -1443,7 +1483,6 @@
                                 </div>
                             ) : (
                                 <>
-                                    {/* Upcoming Section */}
                                     {upcomingTrips.length > 0 && (
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-2 text-fuchsia-400">
@@ -1456,7 +1495,6 @@
                                         </div>
                                     )}
 
-                                    {/* History Section */}
                                     {pastTrips.length > 0 && (
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-2 text-gray-500">
@@ -1475,7 +1513,6 @@
 
                 </main>
 
-                {/* --- Bottom Nav --- */}
                 <nav className="fixed bottom-0 w-full bg-[#050505]/90 backdrop-blur-xl border-t border-white/5 pb-safe z-50">
                     <div className="flex justify-around max-w-2xl mx-auto relative">
                         <div className="absolute top-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent"></div>
@@ -1494,7 +1531,6 @@
                     </div>
                 </nav>
 
-                {/* --- AI Modal --- */}
                 {showAIModal && (
                     <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
                         <div className="bg-[#121212] w-full max-w-sm rounded-2xl border border-white/10 shadow-[0_0_50px_rgba(192,38,211,0.15)] overflow-hidden flex flex-col max-h-[85vh] relative">
@@ -1515,7 +1551,6 @@
                                         
                                         <div className="bg-black/30 p-2.5 rounded-lg border border-white/5 flex items-center justify-between">
                                             <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">IMPORT TO</span>
-                                            {/* Styled Dropdown in AI Modal */}
                                             <div className="relative">
                                                 <select 
                                                     value={importDay} 
