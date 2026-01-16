@@ -108,9 +108,9 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        // 設定主模型 (2.5 Preview) 與 備用模型 (1.5 Flash)
+        // 設定主模型 (2.5 Preview) 與 備用模型 (2.5 Flash-Lite)
         const PRIMARY_MODEL = "gemini-2.5-flash-preview-09-2025";
-        const FALLBACK_MODEL = "gemini-1.5-flash";
+        const FALLBACK_MODEL = "gemini-2.5-flash-lite-preview";
 
         // Helper: Call Gemini API with Auto-Fallback
         const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
