@@ -108,94 +108,73 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        // 定義模型嘗試順序：優先使用 2.5 -> 2.5 Lite -> 3.0 Flash Preview (User Requested)
-        const MODEL_SEQUENCE = [
-            "gemini-2.5-flash-preview-09-2025",
-            "gemini-2.5-flash-lite-preview-09-2025",
-            "gemini-3-flash-preview"
-        ];
+        // 修正：鎖定為環境唯一支援的 2.5 Preview 模型
+        const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
 
-        // Helper: Call Gemini API with Multi-Stage Fallback
-        const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
+        // Helper: Call Gemini API
+        // 修改：新增 useSearch 參數，預設為 false
+        const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "", useSearch = false) => {
             const apiKey = (userApiKey || "").trim(); 
 
             if (!apiKey) {
                 throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
             }
 
-            // 建立共用的請求內容 (Payload)
-            const createPayload = () => ({
-                contents: [
-                    {
-                        parts: [
-                            { text: prompt },
-                            ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
-                        ]
-                    }
-                ],
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+            const contents = [
+                {
+                    parts: [
+                        { text: prompt },
+                        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
+                    ]
+                }
+            ];
+
+            const payload = {
+                contents,
                 generationConfig: {
                     responseMimeType: "application/json"
                 },
                 systemInstruction: {
                     parts: [{ text: systemPrompt }]
                 }
-            });
+            };
 
-            // 執行單次 API 請求的內部函式
-            const executeRequest = async (model) => {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                
+            // 新增：如果有啟用搜尋，則加入 Google Search 工具
+            if (useSearch) {
+                payload.tools = [{ google_search: {} }];
+            }
+
+            try {
                 const response = await fetch(url, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(createPayload())
+                    body: JSON.stringify(payload)
                 });
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    const error = new Error(errorData.error?.message || response.statusText);
-                    error.status = response.status;
-                    throw error;
+                    const errorMessage = errorData.error?.message || response.statusText;
+                    
+                    // 針對 429 速率限制給出明確提示
+                    if (response.status === 429) {
+                        throw new Error("使用量已達上限 (Rate Limit)。請等待約 30 秒後再試一次。");
+                    }
+                    if (errorMessage.includes("API key not valid")) {
+                         throw new Error("API Key 無效。請檢查 Key 是否正確或已被刪除。");
+                    }
+                    throw new Error(`API Error: ${response.status} ${errorMessage}`);
                 }
-                
                 const data = await response.json();
                 const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (!text) throw new Error("No content generated");
                 
                 return JSON.parse(text);
-            };
-
-            // 迴圈嘗試模型清單
-            let lastError = null;
-
-            for (const model of MODEL_SEQUENCE) {
-                try {
-                    return await executeRequest(model);
-                } catch (error) {
-                    lastError = error;
-                    
-                    // 錯誤處理：
-                    // 1. 如果是 Key 無效，直接拋出，不用試下一個模型了
-                    if (error.message.includes("API key not valid") || error.message.includes("API Key 無效")) {
-                         throw new Error("API Key 無效。請檢查 Key 是否正確或已被刪除。");
-                    }
-
-                    // 2. 如果是可重試的錯誤 (429 Rate Limit, 503 Busy, 404 Not Found)，則嘗試下一個模型
-                    if (error.status === 429 || error.status === 503 || error.status === 404) {
-                        console.warn(`Model ${model} failed with status ${error.status}. Switching to next model...`);
-                        continue; // 進入下一次迴圈，嘗試下一個模型
-                    }
-
-                    // 3. 其他錯誤 (如參數錯誤)，直接拋出
-                    throw error;
-                }
+            } catch (error) {
+                console.error("Gemini API Call Failed:", error);
+                throw error;
             }
-
-            // 如果迴圈跑完都沒成功
-            let msg = "AI 服務暫時無法使用 (所有備用模型皆失敗)。";
-            if (lastError?.status === 429) msg += "\n(所有模型使用量皆達上限)";
-            msg += `\n最後嘗試錯誤: ${lastError?.message}`;
-            throw new Error(msg);
         };
 
         // Helper: Convert file to Base64
@@ -895,7 +874,8 @@
 
                 try {
                     const base64Data = selectedImage.split(',')[1];
-                    const result = await callGemini(`Extract schedule for day ${importDay}`, base64Data, systemInstruction, apiKey);
+                    // 圖片辨識不需要搜尋，保持 useSearch = false
+                    const result = await callGemini(`Extract schedule for day ${importDay}`, base64Data, systemInstruction, apiKey, false);
                     
                     if (Array.isArray(result)) {
                         // Merging Logic: Same Stage + Same StartTime -> Merge
@@ -971,12 +951,14 @@
                 const systemInstruction = `
                     You are a festival guide. User gives preferences.
                     You have access to: ${JSON.stringify(performances.map(p => ({ id: p.id, band: p.band, style: "unknown" })))}.
-                    Select matching performance IDs.
+                    Select matching performance IDs based on user's taste.
+                    **IMPORTANT: Use Google Search to verify the genre/style of the bands if you are unsure.**
                     Return JSON: { "selectedIds": [string], "message": string (Traditional Chinese comment) }
                 `;
 
                 try {
-                    const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey);
+                    // 修改：啟用 Google 搜尋功能 (最後一個參數設為 true)
+                    const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, true);
                     if (result.selectedIds) {
                         const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
                         setMySchedule(prev => [...prev, ...newIds]);
