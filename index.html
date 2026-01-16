@@ -29,6 +29,31 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        @keyframes slideDown {
+            from { transform: translate(-50%, -100%); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+        .animate-slideDown {
+            animation: slideDown 0.3s ease-out forwards;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .animate-fadeIn {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        /* 新增：向上淡入動畫，修正登入頁按鈕歪掉的問題 */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeInUp {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
     </style>
 </head>
 <body class="bg-[#050505]">
@@ -65,17 +90,17 @@
         } from "firebase/firestore";
 
         // --- Firebase Configuration & Init ---
-        // Safety check for local execution where __firebase_config might not be defined
-       const firebaseConfig = {
-  apiKey: "AIzaSyDKNyqJCEbI5uCSUc4ws7dKuyBZA2lRaOA",
-  authDomain: "kevinwork-eb7cc.firebaseapp.com",
-  databaseURL: "https://kevinwork-eb7cc-default-rtdb.firebaseio.com",
-  projectId: "kevinwork-eb7cc",
-  storageBucket: "kevinwork-eb7cc.firebasestorage.app",
-  messagingSenderId: "462117666080",
-  appId: "1:462117666080:web:4289c00cc5144f98f6eb45",
-  measurementId: "G-2DRK1D06QE"
-};
+        // Adapting to the current environment while keeping fallback
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "AIzaSyDKNyqJCEbI5uCSUc4ws7dKuyBZA2lRaOA",
+            authDomain: "kevinwork-eb7cc.firebaseapp.com",
+            databaseURL: "https://kevinwork-eb7cc-default-rtdb.firebaseio.com",
+            projectId: "kevinwork-eb7cc",
+            storageBucket: "kevinwork-eb7cc.firebasestorage.app",
+            messagingSenderId: "462117666080",
+            appId: "1:462117666080:web:4289c00cc5144f98f6eb45",
+            measurementId: "G-2DRK1D06QE"
+        };
             
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -87,134 +112,134 @@
 
         // Helper: Call Gemini API
         const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
-        const apiKey = userApiKey || ""; 
+            const apiKey = userApiKey || ""; 
 
-        if (!apiKey) {
-            throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
-        }
-
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
-        const contents = [
-            {
-                parts: [
-                    { text: prompt },
-                    ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
-                ]
+            if (!apiKey) {
+                throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
             }
-        ];
 
-        const payload = {
-            contents,
-            generationConfig: {
-                responseMimeType: "application/json"
-            },
-            systemInstruction: {
-                parts: [{ text: systemPrompt }]
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+            const contents = [
+                {
+                    parts: [
+                        { text: prompt },
+                        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
+                    ]
+                }
+            ];
+
+            const payload = {
+                contents,
+                generationConfig: {
+                    responseMimeType: "application/json"
+                },
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                }
+            };
+
+            try {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`API Error: ${response.status} ${errorData.error?.message || ''}`);
+                }
+                const data = await response.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error("No content generated");
+                
+                return JSON.parse(text);
+            } catch (error) {
+                console.error("Gemini API Call Failed:", error);
+                throw error;
             }
-        };
-
-        try {
-            const response = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`API Error: ${response.status} ${errorData.error?.message || ''}`);
-            }
-            const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) throw new Error("No content generated");
-            
-            return JSON.parse(text);
-        } catch (error) {
-            console.error("Gemini API Call Failed:", error);
-            throw error;
-        }
         };
 
         // Helper: Convert file to Base64
         const fileToBase64 = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = (error) => reject(error);
-        });
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = (error) => reject(error);
+            });
         };
 
         // --- Sub-components ---
 
         const Notification = ({ message, type, onClose }) => {
-        if (!message) return null;
-        
-        const bgColor = type === 'success' ? 'bg-gradient-to-r from-fuchsia-600 to-purple-600' : 'bg-red-600/90';
-        const icon = type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />;
+            if (!message) return null;
+            
+            const bgColor = type === 'success' ? 'bg-gradient-to-r from-fuchsia-600 to-purple-600' : 'bg-red-600/90';
+            const icon = type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />;
 
-        return (
-            <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] px-4 py-2 rounded-full shadow-[0_0_20px_rgba(192,38,211,0.4)] flex items-center gap-2 text-white font-bold animate-slideDown backdrop-blur-md border border-white/20 ${bgColor}`}>
-                {icon}
-                <span className="text-xs tracking-wide whitespace-nowrap">{message}</span>
-                <button onClick={onClose} className="ml-1 opacity-80 hover:opacity-100">
-                    <X size={12} />
-                </button>
-            </div>
-        );
+            return (
+                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] px-4 py-2 rounded-full shadow-[0_0_20px_rgba(192,38,211,0.4)] flex items-center gap-2 text-white font-bold animate-slideDown backdrop-blur-md border border-white/20 ${bgColor}`}>
+                    {icon}
+                    <span className="text-xs tracking-wide whitespace-nowrap">{message}</span>
+                    <button onClick={onClose} className="ml-1 opacity-80 hover:opacity-100">
+                        <X size={12} />
+                    </button>
+                </div>
+            );
         };
 
         const SettingsModal = ({ isOpen, onClose, apiKey, onSave }) => {
-        const [keyInput, setKeyInput] = useState(apiKey);
+            const [keyInput, setKeyInput] = useState(apiKey);
 
-        useEffect(() => {
-            setKeyInput(apiKey);
-        }, [apiKey, isOpen]);
+            useEffect(() => {
+                setKeyInput(apiKey);
+            }, [apiKey, isOpen]);
 
-        if (!isOpen) return null;
+            if (!isOpen) return null;
 
-        return (
-            <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
-                <div className="bg-[#121212] w-full max-w-sm rounded-xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] p-5 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-600/20 blur-[50px] rounded-full pointer-events-none"></div>
-                    
-                    <div className="flex justify-between items-center mb-4 relative z-10">
-                        <h3 className="text-lg font-black text-white flex items-center gap-2 italic">
-                            <Settings className="text-fuchsia-400" size={20} /> SETTINGS
-                        </h3>
-                        <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-                            <X size={20} />
-                        </button>
-                    </div>
-
-                    <div className="space-y-4 relative z-10">
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-fuchsia-400 uppercase tracking-widest flex items-center gap-2">
-                                <Key size={12} /> Gemini API Key
-                            </label>
-                            <input 
-                                type="password" 
-                                value={keyInput}
-                                onChange={(e) => setKeyInput(e.target.value)}
-                                placeholder="請輸入您的 API Key"
-                                className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 outline-none transition-all placeholder-gray-600 text-xs"
-                            />
-                            <p className="text-[10px] text-gray-400">
-                                需要設定金鑰才能使用 AI 圖片匯入與排程建議功能。
-                            </p>
+            return (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-[#121212] w-full max-w-sm rounded-xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] p-5 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-600/20 blur-[50px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="flex justify-between items-center mb-4 relative z-10">
+                            <h3 className="text-lg font-black text-white flex items-center gap-2 italic">
+                                <Settings className="text-fuchsia-400" size={20} /> SETTINGS
+                            </h3>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+                                <X size={20} />
+                            </button>
                         </div>
 
-                        <button 
-                            onClick={() => { onSave(keyInput); onClose(); }}
-                            className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-2.5 rounded-lg transition-all shadow-lg hover:shadow-fuchsia-900/50 transform hover:scale-[1.02] text-xs"
-                        >
-                            儲存設定
-                        </button>
+                        <div className="space-y-4 relative z-10">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-fuchsia-400 uppercase tracking-widest flex items-center gap-2">
+                                    <Key size={12} /> Gemini API Key
+                                </label>
+                                <input 
+                                    type="password" 
+                                    value={keyInput}
+                                    onChange={(e) => setKeyInput(e.target.value)}
+                                    placeholder="請輸入您的 API Key"
+                                    className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 outline-none transition-all placeholder-gray-600 text-xs"
+                                />
+                                <p className="text-[10px] text-gray-400">
+                                    需要設定金鑰才能使用 AI 圖片匯入與排程建議功能。
+                                </p>
+                            </div>
+
+                            <button 
+                                onClick={() => { onSave(keyInput); onClose(); }}
+                                className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-2.5 rounded-lg transition-all shadow-lg hover:shadow-fuchsia-900/50 transform hover:scale-[1.02] text-xs"
+                            >
+                                儲存設定
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        );
+            );
         };
 
         // Account Modal
@@ -315,7 +340,7 @@
                             <p className="text-gray-400 text-sm font-medium tracking-widest uppercase">Your Ultimate Gig Planner</p>
                         </div>
 
-                        <div className="space-y-4 pt-4 animate-slideDown">
+                        <div className="space-y-4 pt-4 animate-fadeInUp">
                             <button 
                                 onClick={onLogin}
                                 className="w-full bg-white text-black font-bold py-4 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-100 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] active:scale-[0.98]"
@@ -355,1033 +380,1069 @@
             );
         };
 
-        // ... (Other Components remain the same: AddPerformanceForm) ...
         const AddPerformanceForm = ({ 
-        onAdd, 
-        onUpdate, 
-        onDelete, 
-        onCancel, 
-        editingItem, 
-        activeDay,
-        isOpen,
-        days,
-        isInline = false
+            onAdd, 
+            onUpdate, 
+            onDelete, 
+            onCancel, 
+            editingItem, 
+            activeDay,
+            isOpen,
+            days,
+            isInline = false
         }) => {
-        const [form, setForm] = useState({ band: '', stage: '', day: activeDay, startTime: '', endTime: '' });
+            const [form, setForm] = useState({ band: '', stage: '', day: activeDay, startTime: '', endTime: '' });
 
-        useEffect(() => {
-            if (editingItem) {
-                setForm(editingItem);
-            } else {
-                setForm({ band: '', stage: '', day: activeDay, startTime: '', endTime: '' });
-            }
-        }, [editingItem, activeDay, isOpen]);
+            useEffect(() => {
+                if (editingItem) {
+                    setForm(editingItem);
+                } else {
+                    setForm({ band: '', stage: '', day: activeDay, startTime: '', endTime: '' });
+                }
+            }, [editingItem, activeDay, isOpen]);
 
-        if (!isOpen) return null;
+            if (!isOpen) return null;
 
-        const handleSubmit = (e) => {
-            e.preventDefault();
-            if (!form.band || !form.startTime) return;
-            
-            const itemToSave = {
-                ...form,
-                id: editingItem ? editingItem.id : Date.now().toString(),
-                addedAt: new Date().toISOString()
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!form.band || !form.startTime) return;
+                
+                const itemToSave = {
+                    ...form,
+                    id: editingItem ? editingItem.id : Date.now().toString(),
+                    addedAt: new Date().toISOString()
+                };
+
+                if (editingItem) {
+                    onUpdate(itemToSave);
+                } else {
+                    onAdd(itemToSave);
+                }
             };
 
-            if (editingItem) {
-                onUpdate(itemToSave);
-            } else {
-                onAdd(itemToSave);
-            }
-        };
+            return (
+                <form 
+                    onSubmit={handleSubmit} 
+                    className={`p-3 rounded-xl border space-y-3 animate-fadeIn backdrop-blur-sm ${
+                        isInline 
+                        ? 'bg-black/80 border-fuchsia-500/50 mt-2 mb-4 mx-1 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]' 
+                        : 'bg-white/5 border-white/10 mb-4 shadow-xl'
+                    }`}
+                >
+                    <div className="flex justify-between items-center mb-1">
+                        <h3 className="font-bold text-white text-xs tracking-widest uppercase">
+                            {editingItem ? 'EDIT GIG' : 'NEW GIG'}
+                        </h3>
+                        {editingItem && (
+                            <button type="button" onClick={onCancel} className="text-[10px] text-gray-500 hover:text-white transition-colors">
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
 
-        return (
-            <form 
-                onSubmit={handleSubmit} 
-                className={`p-3 rounded-xl border space-y-3 animate-fadeIn backdrop-blur-sm ${
-                    isInline 
-                    ? 'bg-black/80 border-fuchsia-500/50 mt-2 mb-4 mx-1 shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]' 
-                    : 'bg-white/5 border-white/10 mb-4 shadow-xl'
-                }`}
-            >
-                <div className="flex justify-between items-center mb-1">
-                    <h3 className="font-bold text-white text-xs tracking-widest uppercase">
-                        {editingItem ? 'EDIT GIG' : 'NEW GIG'}
-                    </h3>
-                    {editingItem && (
-                        <button type="button" onClick={onCancel} className="text-[10px] text-gray-500 hover:text-white transition-colors">
-                            <X size={14} />
-                        </button>
-                    )}
-                </div>
-
-                <div className="space-y-2">
-                    <input 
-                        placeholder="藝人 / 樂團名稱" 
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-fuchsia-500 outline-none text-xs transition-colors font-medium placeholder-gray-600"
-                        value={form.band}
-                        onChange={e => setForm({...form, band: e.target.value})}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                         <input 
-                            placeholder="舞台名稱" 
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-fuchsia-500 outline-none text-xs transition-colors placeholder-gray-600"
-                            value={form.stage}
-                            onChange={e => setForm({...form, stage: e.target.value})}
+                            placeholder="藝人 / 樂團名稱" 
+                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-fuchsia-500 outline-none text-xs transition-colors font-medium placeholder-gray-600"
+                            value={form.band}
+                            onChange={e => setForm({...form, band: e.target.value})}
                         />
-                        {/* Styled Dropdown */}
-                        <div className="relative">
-                            <select 
-                                className="w-full bg-black/40 border border-white/10 rounded-lg pl-3 pr-8 py-2 text-white outline-none text-xs cursor-pointer hover:border-fuchsia-500 transition-colors appearance-none"
-                                value={form.day}
-                                onChange={e => setForm({...form, day: e.target.value})}
-                            >
-                                {days.map(d => <option key={d} value={d} className="text-black bg-white">{d}</option>)}
-                            </select>
-                            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                                <ChevronDown size={14} />
+                        <div className="grid grid-cols-2 gap-2">
+                            <input 
+                                placeholder="舞台名稱" 
+                                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-fuchsia-500 outline-none text-xs transition-colors placeholder-gray-600"
+                                value={form.stage}
+                                onChange={e => setForm({...form, stage: e.target.value})}
+                            />
+                            {/* Styled Dropdown */}
+                            <div className="relative">
+                                <select 
+                                    className="w-full bg-black/40 border border-white/10 rounded-lg pl-3 pr-8 py-2 text-white outline-none text-xs cursor-pointer hover:border-fuchsia-500 transition-colors appearance-none"
+                                    value={form.day}
+                                    onChange={e => setForm({...form, day: e.target.value})}
+                                >
+                                    {days.map(d => <option key={d} value={d} className="text-black bg-white">{d}</option>)}
+                                </select>
+                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                                    <ChevronDown size={14} />
+                                </div>
                             </div>
+                        </div>
+                        
+                        <div className="flex gap-2 items-center bg-black/20 p-1.5 rounded-lg border border-white/5">
+                            <Clock size={14} className="text-gray-500 ml-1.5" />
+                            <input 
+                                type="time" 
+                                className="flex-1 bg-transparent border-none rounded-lg px-1 py-1 text-white outline-none text-xs text-center"
+                                value={form.startTime}
+                                onChange={e => setForm({...form, startTime: e.target.value})}
+                            />
+                            <span className="text-gray-600 text-[10px] font-bold">-</span>
+                            <input 
+                                type="time" 
+                                className="flex-1 bg-transparent border-none rounded-lg px-1 py-1 text-white outline-none text-xs text-center"
+                                value={form.endTime}
+                                onChange={e => setForm({...form, endTime: e.target.value})}
+                            />
                         </div>
                     </div>
                     
-                    <div className="flex gap-2 items-center bg-black/20 p-1.5 rounded-lg border border-white/5">
-                        <Clock size={14} className="text-gray-500 ml-1.5" />
-                        <input 
-                            type="time" 
-                            className="flex-1 bg-transparent border-none rounded-lg px-1 py-1 text-white outline-none text-xs text-center"
-                            value={form.startTime}
-                            onChange={e => setForm({...form, startTime: e.target.value})}
-                        />
-                        <span className="text-gray-600 text-[10px] font-bold">-</span>
-                        <input 
-                            type="time" 
-                            className="flex-1 bg-transparent border-none rounded-lg px-1 py-1 text-white outline-none text-xs text-center"
-                            value={form.endTime}
-                            onChange={e => setForm({...form, endTime: e.target.value})}
-                        />
-                    </div>
-                </div>
-                
-                <div className="flex gap-2 pt-1">
-                    {editingItem && (
+                    <div className="flex gap-2 pt-1">
+                        {editingItem && (
+                            <button 
+                                type="button" 
+                                onClick={() => onDelete(editingItem.id)}
+                                className="px-3 py-2 rounded-lg transition-all text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/50 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] text-[10px] font-bold flex items-center justify-center gap-1 group"
+                            >
+                                <Trash2 size={14} className="group-hover:scale-110 transition-transform" />
+                            </button>
+                        )}
                         <button 
-                            type="button" 
-                            onClick={() => onDelete(editingItem.id)}
-                            className="px-3 py-2 rounded-lg transition-all text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/50 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)] text-[10px] font-bold flex items-center justify-center gap-1 group"
+                            type="submit" 
+                            className="flex-1 font-black tracking-wider py-2 rounded-lg transition-all text-white bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-xs shadow-lg hover:shadow-fuchsia-500/30 active:scale-[0.98]"
                         >
-                            <Trash2 size={14} className="group-hover:scale-110 transition-transform" />
+                            {editingItem ? 'UPDATE' : 'ADD TO LINEUP'}
                         </button>
-                    )}
-                    <button 
-                        type="submit" 
-                        className="flex-1 font-black tracking-wider py-2 rounded-lg transition-all text-white bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-xs shadow-lg hover:shadow-fuchsia-500/30 active:scale-[0.98]"
-                    >
-                        {editingItem ? 'UPDATE' : 'ADD TO LINEUP'}
-                    </button>
-                </div>
-            </form>
-        );
+                    </div>
+                </form>
+            );
         };
 
         // --- Main App ---
 
         const App = () => {
-        // Auth & User State
-        const [user, setUser] = useState(null);
-        const [authLoading, setAuthLoading] = useState(true);
-        const [loginError, setLoginError] = useState(null);
+            // Auth & User State
+            const [user, setUser] = useState(null);
+            const [authLoading, setAuthLoading] = useState(true);
+            const [loginError, setLoginError] = useState(null);
 
-        // App Data State
-        const [view, setView] = useState('manage'); 
-        const [festivalName, setFestivalName] = useState('');
-        const [eventType, setEventType] = useState('festival'); // 'festival' or 'gig'
-        const [startDate, setStartDate] = useState(''); 
-        const [endDate, setEndDate] = useState(''); 
-        const [performances, setPerformances] = useState([]);
-        const [mySchedule, setMySchedule] = useState([]); 
-        const [history, setHistory] = useState([]); 
-        
-        // Dynamic Days State
-        const [days, setDays] = useState(['Day 1']);
-
-        // UI State
-        const [isAddFormOpen, setIsAddFormOpen] = useState(false); 
-        const [activeDay, setActiveDay] = useState('Day 1');
-        const [editingItem, setEditingItem] = useState(null); 
-        const [notification, setNotification] = useState({ message: '', type: '' });
-        const [showSettings, setShowSettings] = useState(false);
-        const [showAccount, setShowAccount] = useState(false); 
-        const [apiKey, setApiKey] = useState('');
-        
-        // Delete Modal State
-        const [itemToDelete, setItemToDelete] = useState(null);
-
-        // AI State
-        const [showAIModal, setShowAIModal] = useState(false);
-        const [aiMode, setAiMode] = useState('import'); // 'import' or 'recommend'
-        const [aiLoading, setAiLoading] = useState(false);
-        const [aiError, setAiError] = useState('');
-        const [aiPrompt, setAiPrompt] = useState('');
-        const [selectedImage, setSelectedImage] = useState(null);
-        const [importDay, setImportDay] = useState('Day 1');
-        const fileInputRef = useRef(null);
-
-        // --- Auth Init ---
-        useEffect(() => {
-            const initAuth = async () => {
-            // Check for custom token provided by environment, but don't force anon login yet
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            }
-            };
-            initAuth();
+            // App Data State
+            const [view, setView] = useState('manage'); 
+            const [festivalName, setFestivalName] = useState('');
+            const [eventType, setEventType] = useState('festival'); // 'festival' or 'gig'
+            const [startDate, setStartDate] = useState(''); 
+            const [endDate, setEndDate] = useState(''); 
+            const [performances, setPerformances] = useState([]);
+            const [mySchedule, setMySchedule] = useState([]); 
+            const [history, setHistory] = useState([]); 
             
-            const unsubscribe = onAuthStateChanged(auth, (u) => {
-                setUser(u);
-                setAuthLoading(false);
-                // Clear login errors on successful auth state change
-                if (u) setLoginError(null);
-            });
-            return () => unsubscribe();
-        }, []);
+            // Dynamic Days State
+            const [days, setDays] = useState(['Day 1']);
 
-        const handleGoogleLogin = async () => {
-            const provider = new GoogleAuthProvider();
-            setLoginError(null);
-            try {
-                await signInWithPopup(auth, provider);
-                showNotification("已登入 Google 帳號");
-            } catch (error) {
-                console.error("Google Login Error:", error);
-                let msg = "登入失敗";
-                if (error.code === 'auth/unauthorized-domain') {
-                    msg = "網域未授權 (Unauthorized Domain)";
-                } else if (error.code === 'auth/popup-closed-by-user') {
-                    msg = "登入已取消";
+            // UI State
+            const [isAddFormOpen, setIsAddFormOpen] = useState(false); 
+            const [activeDay, setActiveDay] = useState('Day 1');
+            const [editingItem, setEditingItem] = useState(null); 
+            const [notification, setNotification] = useState({ message: '', type: '' });
+            const [showSettings, setShowSettings] = useState(false);
+            const [showAccount, setShowAccount] = useState(false); 
+            const [apiKey, setApiKey] = useState('');
+            
+            // Delete Modal State
+            const [itemToDelete, setItemToDelete] = useState(null);
+
+            // AI State
+            const [showAIModal, setShowAIModal] = useState(false);
+            const [aiMode, setAiMode] = useState('import'); // 'import' or 'recommend'
+            const [aiLoading, setAiLoading] = useState(false);
+            const [aiError, setAiError] = useState('');
+            const [aiPrompt, setAiPrompt] = useState('');
+            const [selectedImage, setSelectedImage] = useState(null);
+            const [importDay, setImportDay] = useState('Day 1');
+            const fileInputRef = useRef(null);
+
+            // --- Auth Init ---
+            useEffect(() => {
+                const initAuth = async () => {
+                // Check for custom token provided by environment
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
                 }
-                setLoginError(msg);
-            }
-        };
-
-        const handleGuestLogin = async () => {
-            setLoginError(null);
-            try {
-                await signInAnonymously(auth);
-                showNotification("以訪客身份登入");
-            } catch (error) {
-                console.error("Guest Login Error:", error);
-                setLoginError("訪客登入失敗");
-            }
-        };
-
-        const handleLogout = async () => {
-            try {
-                await signOut(auth);
-                showNotification("已登出");
-            } catch (error) {
-                console.error("Logout Error:", error);
-            }
-        };
-
-        // --- Local Storage for API Key ---
-        useEffect(() => {
-            const savedKey = localStorage.getItem('gemini_api_key');
-            if (savedKey) setApiKey(savedKey);
-        }, []);
-
-        const handleSaveApiKey = (key) => {
-            setApiKey(key);
-            localStorage.setItem('gemini_api_key', key);
-            showNotification("API Key 已儲存");
-        };
-
-        // --- Firestore History Sync ---
-        useEffect(() => {
-            if (!user) {
-                setHistory([]);
-                return;
-            }
-            const historyRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'history');
-            const q = query(historyRef);
-            
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const historyData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setHistory(historyData);
-            }, (error) => {
-                console.error("Error fetching history:", error);
-            });
-
-            return () => unsubscribe();
-        }, [user]);
-
-        // --- Split History Logic ---
-        const { upcomingTrips, pastTrips } = useMemo(() => {
-            const today = new Date().toISOString().split('T')[0];
-            const upcoming = [];
-            const past = [];
-
-            history.forEach(item => {
-                // Check start date first, fallback to saved date
-                const checkDate = item.startDate || item.dateSaved.split('T')[0];
+                };
+                initAuth();
                 
-                if (checkDate >= today) {
-                    upcoming.push(item);
-                } else {
-                    past.push(item);
-                }
-            });
+                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    setAuthLoading(false);
+                    // Clear login errors on successful auth state change
+                    if (u) setLoginError(null);
+                });
+                return () => unsubscribe();
+            }, []);
 
-            // Sort upcoming: Closest date first (Ascending)
-            upcoming.sort((a, b) => {
-                const dateA = a.startDate || a.dateSaved;
-                const dateB = b.startDate || b.dateSaved;
-                return new Date(dateA) - new Date(dateB);
-            });
-
-            // Sort past: Most recent date first (Descending)
-            past.sort((a, b) => {
-                const dateA = a.startDate || a.dateSaved;
-                const dateB = b.startDate || b.dateSaved;
-                return new Date(dateB) - new Date(dateA);
-            });
-
-            return { upcomingTrips: upcoming, pastTrips: past };
-        }, [history]);
-
-        // --- Date Logic ---
-        useEffect(() => {
-            if (startDate) {
-                if (eventType === 'gig') {
-                    setDays(['Day 1']);
-                    if (endDate !== startDate) setEndDate(startDate);
-                } else {
-                    // Festival Mode: Calculate days
-                    if (endDate && endDate >= startDate) {
-                        const start = new Date(startDate);
-                        const end = new Date(endDate);
-                        const diffTime = Math.abs(end - start);
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-                        
-                        // Cap at reasonable max to prevent crashes
-                        const count = Math.min(diffDays, 14); 
-                        const newDays = Array.from({length: count}, (_, i) => `Day ${i + 1}`);
-                        
-                        // Only update if changed
-                        if (JSON.stringify(newDays) !== JSON.stringify(days)) {
-                            setDays(newDays);
-                            if (!newDays.includes(activeDay)) setActiveDay('Day 1');
-                        }
-                    } else {
-                        // Default to 1 day if end date not set or invalid
-                        if (JSON.stringify(days) !== JSON.stringify(['Day 1'])) {
-                            setDays(['Day 1']);
-                        }
+            const handleGoogleLogin = async () => {
+                const provider = new GoogleAuthProvider();
+                setLoginError(null);
+                try {
+                    await signInWithPopup(auth, provider);
+                    showNotification("已登入 Google 帳號");
+                } catch (error) {
+                    console.error("Google Login Error:", error);
+                    let msg = "登入失敗";
+                    if (error.code === 'auth/unauthorized-domain') {
+                        msg = "網域未授權 (Unauthorized Domain)";
+                    } else if (error.code === 'auth/popup-closed-by-user') {
+                        msg = "登入已取消";
                     }
+                    setLoginError(msg);
                 }
-            }
-        }, [startDate, endDate, eventType]);
-
-
-        // --- Actions ---
-        const showNotification = (message, type = 'success') => {
-            setNotification({ message, type });
-            setTimeout(() => setNotification({ message: '', type: '' }), 3000);
-        };
-
-        const startNewFestival = (showConfirm = true) => {
-            if (showConfirm && performances.length > 0 && !confirm('確定要清除目前資料並開始新的音樂祭嗎？')) return;
-            setFestivalName('');
-            setStartDate('');
-            setEndDate('');
-            setEventType('festival');
-            setPerformances([]);
-            setMySchedule([]);
-            setDays(['Day 1']);
-            setActiveDay('Day 1');
-            setView('manage');
-            if (showConfirm) showNotification('已重置');
-        };
-
-        const saveCurrentToHistory = async () => {
-            if (!user) return;
-            if (!festivalName.trim()) {
-                showNotification('請輸入活動名稱', 'error');
-                return;
-            }
-            
-            const entryData = {
-                name: festivalName.trim(),
-                type: eventType,
-                startDate: startDate,
-                endDate: eventType === 'festival' ? endDate : '',
-                dateSaved: new Date().toISOString(),
-                performances: performances,
-                mySchedule: mySchedule,
-                days: days 
             };
 
-            try {
-                const newId = Date.now().toString();
-                await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', newId), entryData);
-                showNotification(`行程 "${festivalName}" 已儲存！`);
-                // Clear after save automatically
-                startNewFestival(false);
-            } catch (error) {
-                console.error("Error saving:", error);
-                showNotification("儲存失敗", "error");
-            }
-        };
+            const handleGuestLogin = async () => {
+                setLoginError(null);
+                try {
+                    await signInAnonymously(auth);
+                    showNotification("以訪客身份登入");
+                } catch (error) {
+                    console.error("Guest Login Error:", error);
+                    setLoginError("訪客登入失敗");
+                }
+            };
 
-        const loadFromHistory = (entry) => {
-            if (performances.length > 0) {
-                if (!confirm('載入舊行程將會覆蓋目前的編輯進度，確定要載入嗎？')) return;
-            }
-            setFestivalName(entry.name);
-            setStartDate(entry.startDate || '');
-            setEndDate(entry.endDate || '');
-            setEventType(entry.type || 'festival'); 
-            setPerformances(entry.performances || []);
-            setMySchedule(entry.mySchedule || []);
-            setDays(entry.days || ['Day 1']); 
-            setActiveDay('Day 1');
-            setView('program'); 
-            showNotification(`已載入 "${entry.name}"`);
-        };
+            const handleLogout = async () => {
+                try {
+                    await signOut(auth);
+                    showNotification("已登出");
+                } catch (error) {
+                    console.error("Logout Error:", error);
+                }
+            };
 
-        // Fixed Delete Handler using State
-        const requestDeleteHistory = (e, id) => {
-            e.stopPropagation();
-            setItemToDelete(id);
-        };
+            // --- Local Storage for API Key ---
+            useEffect(() => {
+                const savedKey = localStorage.getItem('gemini_api_key');
+                if (savedKey) setApiKey(savedKey);
+            }, []);
 
-        const confirmDeleteHistory = async () => {
-            if (!user || !itemToDelete) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', itemToDelete));
-                showNotification('已刪除紀錄');
-                setItemToDelete(null); // Close modal
-            } catch (error) {
-                console.error(error);
-                showNotification("刪除失敗", "error");
-            }
-        };
+            const handleSaveApiKey = (key) => {
+                setApiKey(key);
+                localStorage.setItem('gemini_api_key', key);
+                showNotification("API Key 已儲存");
+            };
 
-        // --- CRUD Operations ---
-        const addPerformance = (perf) => {
-            setPerformances(prev => [...prev, perf]);
-            setIsAddFormOpen(false);
-            showNotification("已新增表演");
-        };
-
-        const updatePerformance = (updatedPerf) => {
-            setPerformances(prev => prev.map(p => p.id === updatedPerf.id ? updatedPerf : p));
-            setEditingItem(null); 
-            showNotification("已更新表演");
-        };
-
-        const removePerformance = (id) => {
-            setPerformances(prev => prev.filter(p => p.id !== id));
-            setMySchedule(prev => prev.filter(pid => pid !== id));
-            if (editingItem?.id === id) setEditingItem(null);
-            showNotification("已刪除", "error");
-        };
-
-        const toggleMySchedule = (id) => {
-            setMySchedule(prev => {
-                if (prev.includes(id)) return prev.filter(pid => pid !== id);
-                return [...prev, id];
-            });
-        };
-
-        // --- AI Logic ---
-        const handleImageUpload = async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const base64 = await fileToBase64(file);
-                setSelectedImage(base64);
-            }
-        };
-
-        const runAIImageImport = async () => {
-            if (!selectedImage) return;
-            setAiLoading(true);
-            setAiError('');
-
-            const systemInstruction = `
-                You are a data extraction assistant for a music festival planner.
-                Analyze the image (timetable/lineup).
-                Extract ALL performance data into a JSON array.
-                Schema: [{ "band": string, "stage": string (e.g. Main Stage), "day": string, "startTime": string (HH:MM), "endTime": string (HH:MM) }]
-                Rules:
-                1. FORCE all extracted events to have the day: "${importDay}".
-                2. If end time is missing, assume 45 mins duration.
-                3. Ensure time is 24-hour HH:MM.
-                4. If stage is unclear, use "Main Stage".
-            `;
-
-            try {
-                const base64Data = selectedImage.split(',')[1];
-                const result = await callGemini(`Extract schedule for day ${importDay}`, base64Data, systemInstruction, apiKey);
+            // --- Firestore History Sync ---
+            useEffect(() => {
+                if (!user) {
+                    setHistory([]);
+                    return;
+                }
+                // NOTE: Updated path to be fully compliant with environment rules
+                const historyRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'history');
+                const q = query(historyRef);
                 
-                if (Array.isArray(result)) {
-                    // Merging Logic: Same Stage + Same StartTime -> Merge
-                    const mergedMap = new Map();
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const historyData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setHistory(historyData);
+                }, (error) => {
+                    console.error("Error fetching history:", error);
+                });
 
-                    result.forEach(rawItem => {
-                        // Normalize
-                        const stage = (rawItem.stage || "Main Stage").trim();
-                        const startTime = (rawItem.startTime || "").trim();
-                        const band = (rawItem.band || "").trim();
-                        const endTime = (rawItem.endTime || "").trim();
+                return () => unsubscribe();
+            }, [user]);
 
-                        // Skip if no band name found
-                        if (!band) return;
+            // --- Split History Logic ---
+            const { upcomingTrips, pastTrips } = useMemo(() => {
+                const today = new Date().toISOString().split('T')[0];
+                const upcoming = [];
+                const past = [];
 
-                        // Unique Key: Stage + StartTime (Case-insensitive stage)
-                        const key = `${stage.toLowerCase()}_${startTime}`;
+                history.forEach(item => {
+                    // Check start date first, fallback to saved date
+                    const checkDate = item.startDate || item.dateSaved.split('T')[0];
+                    
+                    if (checkDate >= today) {
+                        upcoming.push(item);
+                    } else {
+                        past.push(item);
+                    }
+                });
 
-                        if (mergedMap.has(key)) {
-                            const existing = mergedMap.get(key);
+                // Sort upcoming: Closest date first (Ascending)
+                upcoming.sort((a, b) => {
+                    const dateA = a.startDate || a.dateSaved;
+                    const dateB = b.startDate || b.dateSaved;
+                    return new Date(dateA) - new Date(dateB);
+                });
+
+                // Sort past: Most recent date first (Descending)
+                past.sort((a, b) => {
+                    const dateA = a.startDate || a.dateSaved;
+                    const dateB = b.startDate || b.dateSaved;
+                    return new Date(dateB) - new Date(dateA);
+                });
+
+                return { upcomingTrips: upcoming, pastTrips: past };
+            }, [history]);
+
+            // --- Date Logic ---
+            useEffect(() => {
+                if (startDate) {
+                    if (eventType === 'gig') {
+                        setDays(['Day 1']);
+                        if (endDate !== startDate) setEndDate(startDate);
+                    } else {
+                        // Festival Mode: Calculate days
+                        if (endDate && endDate >= startDate) {
+                            const start = new Date(startDate);
+                            const end = new Date(endDate);
+                            const diffTime = Math.abs(end - start);
+                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
                             
-                            // 1. Merge Band Name if different
-                            if (!existing.band.includes(band)) {
-                                existing.band = `${existing.band} / ${band}`;
-                            }
-
-                            // 2. Extend EndTime if new item is longer
-                            if (endTime && (!existing.endTime || endTime > existing.endTime)) {
-                                existing.endTime = endTime;
+                            // Cap at reasonable max to prevent crashes
+                            const count = Math.min(diffDays, 14); 
+                            const newDays = Array.from({length: count}, (_, i) => `Day ${i + 1}`);
+                            
+                            // Only update if changed
+                            if (JSON.stringify(newDays) !== JSON.stringify(days)) {
+                                setDays(newDays);
+                                if (!newDays.includes(activeDay)) setActiveDay('Day 1');
                             }
                         } else {
-                            mergedMap.set(key, {
-                                ...rawItem,
-                                stage,
-                                startTime,
-                                endTime,
-                                band,
-                                day: importDay // Enforce selected day
-                            });
-                        }
-                    });
-
-                    const newItems = Array.from(mergedMap.values()).map(item => ({
-                        ...item,
-                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                        addedAt: new Date().toISOString()
-                    }));
-                    
-                    setPerformances(prev => {
-                        // User requested overwrite logic: Remove existing events for the importDay
-                        const existingFiltered = prev.filter(p => p.day !== importDay);
-                        return [...existingFiltered, ...newItems];
-                    });
-                    
-                    setShowAIModal(false);
-                    setSelectedImage(null);
-                    showNotification(`成功匯入 ${newItems.length} 筆表演 (已更新 ${importDay})`);
-                }
-            } catch (err) {
-                setAiError(`辨識失敗: ${err.message}`);
-            } finally {
-                setAiLoading(false);
-            }
-        };
-
-        const runAIRecommend = async () => {
-            if (!aiPrompt.trim()) return;
-            setAiLoading(true);
-            setAiError('');
-
-            const systemInstruction = `
-                You are a festival guide. User gives preferences.
-                You have access to: ${JSON.stringify(performances.map(p => ({ id: p.id, band: p.band, style: "unknown" })))}.
-                Select matching performance IDs.
-                Return JSON: { "selectedIds": [string], "message": string (Traditional Chinese comment) }
-            `;
-
-            try {
-                const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey);
-                if (result.selectedIds) {
-                    const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
-                    setMySchedule(prev => [...prev, ...newIds]);
-                    setShowAIModal(false);
-                    setAiPrompt('');
-                    showNotification(result.message || `AI 已為您加入 ${newIds.length} 個行程！`);
-                }
-            } catch (err) {
-                setAiError(`AI 錯誤: ${err.message}`);
-            } finally {
-                setAiLoading(false);
-            }
-        };
-
-        // --- Computed Data ---
-        const currentDayPerformances = useMemo(() => {
-            return performances
-                .filter(p => p.day === activeDay)
-                .sort((a, b) => a.startTime.localeCompare(b.startTime));
-        }, [performances, activeDay]);
-
-        const uniqueStages = useMemo(() => {
-            return Array.from(new Set(currentDayPerformances.map(p => p.stage))).sort();
-        }, [currentDayPerformances]);
-
-        const conflicts = useMemo(() => {
-            const selected = performances.filter(p => mySchedule.includes(p.id));
-            const conflictSet = new Set();
-            for (let i = 0; i < selected.length; i++) {
-                for (let j = i + 1; j < selected.length; j++) {
-                    const a = selected[i];
-                    const b = selected[j];
-                    if (a.day === b.day) {
-                        if ((a.startTime >= b.startTime && a.startTime < b.endTime) || 
-                            (b.startTime >= a.startTime && b.startTime < a.endTime)) {
-                            conflictSet.add(a.id);
-                            conflictSet.add(b.id);
+                            // Default to 1 day if end date not set or invalid
+                            if (JSON.stringify(days) !== JSON.stringify(['Day 1'])) {
+                                setDays(['Day 1']);
+                            }
                         }
                     }
                 }
-            }
-            return conflictSet;
-        }, [mySchedule, performances]);
+            }, [startDate, endDate, eventType]);
 
-        // --- Auth Loading Screen ---
-        if (authLoading) {
-            return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="text-fuchsia-500 animate-spin" size={32} /></div>;
-        }
 
-        // --- LOGIN PAGE (Render if no user) ---
-        if (!user) {
-            return <LoginPage onLogin={handleGoogleLogin} onGuestLogin={handleGuestLogin} error={loginError} />;
-        }
+            // --- Actions ---
+            const showNotification = (message, type = 'success') => {
+                setNotification({ message, type });
+                setTimeout(() => setNotification({ message: '', type: '' }), 3000);
+            };
 
-        // --- MAIN APP (Render if user logged in) ---
-        // Helper for rendering trip cards
-        const TripCard = ({ item }) => (
-            <div key={item.id} className="bg-[#121212] border border-white/10 rounded-xl p-4 flex justify-between items-center hover:border-fuchsia-500/50 transition-all group shadow-lg hover:shadow-fuchsia-900/20 relative overflow-hidden">
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-fuchsia-600 to-purple-600"></div>
-                <div className="pl-2">
-                    <div className="flex items-center gap-2 mb-1">
-                        {item.type === 'gig' 
-                            ? <span className="bg-purple-500/20 text-purple-300 text-[8px] font-black px-1.5 py-0.5 rounded border border-purple-500/30 tracking-wider">GIG</span> 
-                            : <span className="bg-fuchsia-500/20 text-fuchsia-300 text-[8px] font-black px-1.5 py-0.5 rounded border border-fuchsia-500/30 tracking-wider">FESTIVAL</span>
+            const startNewFestival = (showConfirm = true) => {
+                if (showConfirm && performances.length > 0 && !confirm('確定要清除目前資料並開始新的音樂祭嗎？')) return;
+                setFestivalName('');
+                setStartDate('');
+                setEndDate('');
+                setEventType('festival');
+                setPerformances([]);
+                setMySchedule([]);
+                setDays(['Day 1']);
+                setActiveDay('Day 1');
+                setView('manage');
+                if (showConfirm) showNotification('已重置');
+            };
+
+            const saveCurrentToHistory = async () => {
+                if (!user) return;
+                // Use trimmed name for check
+                const trimmedName = festivalName.trim();
+                if (!trimmedName) {
+                    showNotification('請輸入活動名稱', 'error');
+                    return;
+                }
+                
+                // 修正：檢查是否已有相同名稱與開始日期的紀錄
+                const existingEntry = history.find(h => h.name === trimmedName && h.startDate === startDate);
+                // 如果有，使用舊的 ID (覆蓋)，否則建立新 ID
+                const docId = existingEntry ? existingEntry.id : Date.now().toString();
+
+                const entryData = {
+                    name: trimmedName,
+                    type: eventType,
+                    startDate: startDate,
+                    endDate: eventType === 'festival' ? endDate : '',
+                    dateSaved: new Date().toISOString(),
+                    performances: performances,
+                    mySchedule: mySchedule,
+                    days: days 
+                };
+
+                try {
+                    await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', docId), entryData);
+                    // 顯示更新或儲存成功的訊息
+                    showNotification(`行程 "${trimmedName}" ${existingEntry ? '已更新' : '已儲存'}！`);
+                    // Clear after save automatically
+                    startNewFestival(false);
+                } catch (error) {
+                    console.error("Error saving:", error);
+                    showNotification("儲存失敗", "error");
+                }
+            };
+
+            const loadFromHistory = (entry) => {
+                if (performances.length > 0) {
+                    if (!confirm('載入舊行程將會覆蓋目前的編輯進度，確定要載入嗎？')) return;
+                }
+                setFestivalName(entry.name);
+                setStartDate(entry.startDate || '');
+                setEndDate(entry.endDate || '');
+                setEventType(entry.type || 'festival'); 
+                setPerformances(entry.performances || []);
+                setMySchedule(entry.mySchedule || []);
+                setDays(entry.days || ['Day 1']); 
+                setActiveDay('Day 1');
+                setView('program'); 
+                showNotification(`已載入 "${entry.name}"`);
+            };
+
+            // Fixed Delete Handler using State
+            const requestDeleteHistory = (e, id) => {
+                e.stopPropagation();
+                setItemToDelete(id);
+            };
+
+            const confirmDeleteHistory = async () => {
+                if (!user || !itemToDelete) return;
+                try {
+                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'history', itemToDelete));
+                    showNotification('已刪除紀錄');
+                    setItemToDelete(null); // Close modal
+                } catch (error) {
+                    console.error(error);
+                    showNotification("刪除失敗", "error");
+                }
+            };
+
+            // --- CRUD Operations ---
+            const addPerformance = (perf) => {
+                setPerformances(prev => [...prev, perf]);
+                setIsAddFormOpen(false);
+                showNotification("已新增表演");
+            };
+
+            const updatePerformance = (updatedPerf) => {
+                setPerformances(prev => prev.map(p => p.id === updatedPerf.id ? updatedPerf : p));
+                setEditingItem(null); 
+                showNotification("已更新表演");
+            };
+
+            const removePerformance = (id) => {
+                setPerformances(prev => prev.filter(p => p.id !== id));
+                setMySchedule(prev => prev.filter(pid => pid !== id));
+                if (editingItem?.id === id) setEditingItem(null);
+                showNotification("已刪除", "error");
+            };
+
+            const toggleMySchedule = (id) => {
+                setMySchedule(prev => {
+                    if (prev.includes(id)) return prev.filter(pid => pid !== id);
+                    return [...prev, id];
+                });
+            };
+
+            // --- AI Logic ---
+            const handleImageUpload = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const base64 = await fileToBase64(file);
+                    setSelectedImage(base64);
+                }
+            };
+
+            const runAIImageImport = async () => {
+                if (!selectedImage) return;
+                setAiLoading(true);
+                setAiError('');
+
+                // 修正：要求 AI 回傳 stageOrder (index)，用於排序舞台
+                const systemInstruction = `
+                    You are a data extraction assistant for a music festival planner.
+                    Analyze the image (timetable/lineup).
+                    Extract ALL performance data into a JSON array.
+                    Schema: [{ "band": string, "stage": string (e.g. Main Stage), "stageOrder": integer (representing the visual column order from left to right, starting at 0), "day": string, "startTime": string (HH:MM), "endTime": string (HH:MM) }]
+                    Rules:
+                    1. FORCE all extracted events to have the day: "${importDay}".
+                    2. If end time is missing, assume 45 mins duration.
+                    3. Ensure time is 24-hour HH:MM.
+                    4. If stage is unclear, use "Main Stage".
+                    5. "stageOrder" MUST be consistent for the same stage. Leftmost stage = 0, next = 1, etc.
+                `;
+
+                try {
+                    const base64Data = selectedImage.split(',')[1];
+                    const result = await callGemini(`Extract schedule for day ${importDay}`, base64Data, systemInstruction, apiKey);
+                    
+                    if (Array.isArray(result)) {
+                        // Merging Logic: Same Stage + Same StartTime -> Merge
+                        const mergedMap = new Map();
+
+                        result.forEach(rawItem => {
+                            // Normalize
+                            const stage = (rawItem.stage || "Main Stage").trim();
+                            const startTime = (rawItem.startTime || "").trim();
+                            const band = (rawItem.band || "").trim();
+                            const endTime = (rawItem.endTime || "").trim();
+                            const stageOrder = rawItem.stageOrder !== undefined ? rawItem.stageOrder : 999;
+
+                            // Skip if no band name found
+                            if (!band) return;
+
+                            // Unique Key: Stage + StartTime (Case-insensitive stage)
+                            const key = `${stage.toLowerCase()}_${startTime}`;
+
+                            if (mergedMap.has(key)) {
+                                const existing = mergedMap.get(key);
+                                
+                                // 1. Merge Band Name if different
+                                if (!existing.band.includes(band)) {
+                                    existing.band = `${existing.band} / ${band}`;
+                                }
+
+                                // 2. Extend EndTime if new item is longer
+                                if (endTime && (!existing.endTime || endTime > existing.endTime)) {
+                                    existing.endTime = endTime;
+                                }
+                            } else {
+                                mergedMap.set(key, {
+                                    ...rawItem,
+                                    stage,
+                                    stageOrder, // 儲存排序資訊
+                                    startTime,
+                                    endTime,
+                                    band,
+                                    day: importDay // Enforce selected day
+                                });
+                            }
+                        });
+
+                        const newItems = Array.from(mergedMap.values()).map(item => ({
+                            ...item,
+                            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                            addedAt: new Date().toISOString()
+                        }));
+                        
+                        setPerformances(prev => {
+                            // User requested overwrite logic: Remove existing events for the importDay
+                            const existingFiltered = prev.filter(p => p.day !== importDay);
+                            return [...existingFiltered, ...newItems];
+                        });
+                        
+                        setShowAIModal(false);
+                        setSelectedImage(null);
+                        showNotification(`成功匯入 ${newItems.length} 筆表演 (已更新 ${importDay})`);
+                    }
+                } catch (err) {
+                    setAiError(`辨識失敗: ${err.message}`);
+                } finally {
+                    setAiLoading(false);
+                }
+            };
+
+            const runAIRecommend = async () => {
+                if (!aiPrompt.trim()) return;
+                setAiLoading(true);
+                setAiError('');
+
+                const systemInstruction = `
+                    You are a festival guide. User gives preferences.
+                    You have access to: ${JSON.stringify(performances.map(p => ({ id: p.id, band: p.band, style: "unknown" })))}.
+                    Select matching performance IDs.
+                    Return JSON: { "selectedIds": [string], "message": string (Traditional Chinese comment) }
+                `;
+
+                try {
+                    const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey);
+                    if (result.selectedIds) {
+                        const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
+                        setMySchedule(prev => [...prev, ...newIds]);
+                        setShowAIModal(false);
+                        setAiPrompt('');
+                        showNotification(result.message || `AI 已為您加入 ${newIds.length} 個行程！`);
+                    }
+                } catch (err) {
+                    setAiError(`AI 錯誤: ${err.message}`);
+                } finally {
+                    setAiLoading(false);
+                }
+            };
+
+            // --- Computed Data ---
+            const currentDayPerformances = useMemo(() => {
+                return performances
+                    .filter(p => p.day === activeDay)
+                    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+            }, [performances, activeDay]);
+
+            // 修正：Unique Stages 排序邏輯
+            const uniqueStages = useMemo(() => {
+                // 取得所有舞台與其對應的順序 (若無順序則設為 999)
+                const stagesWithOrder = currentDayPerformances.map(p => ({
+                    name: p.stage,
+                    order: p.stageOrder !== undefined ? p.stageOrder : 999
+                }));
+
+                // 建立 Map 以去重複，並保留最小的 order
+                const uniqueMap = new Map();
+                stagesWithOrder.forEach(s => {
+                    if (!uniqueMap.has(s.name)) {
+                        uniqueMap.set(s.name, s.order);
+                    } else {
+                        // 如果已經存在，檢查是否新的 order 比較小 (比較靠左)
+                        if (s.order < uniqueMap.get(s.name)) {
+                            uniqueMap.set(s.name, s.order);
                         }
-                        <h4 className="font-bold text-white text-base">{item.name}</h4>
+                    }
+                });
+
+                // 依照 order 排序，如果 order 一樣則照字母排序
+                return Array.from(uniqueMap.keys()).sort((a, b) => {
+                    const orderA = uniqueMap.get(a);
+                    const orderB = uniqueMap.get(b);
+                    if (orderA !== orderB) return orderA - orderB;
+                    return a.localeCompare(b);
+                });
+            }, [currentDayPerformances]);
+
+            const conflicts = useMemo(() => {
+                const selected = performances.filter(p => mySchedule.includes(p.id));
+                const conflictSet = new Set();
+                for (let i = 0; i < selected.length; i++) {
+                    for (let j = i + 1; j < selected.length; j++) {
+                        const a = selected[i];
+                        const b = selected[j];
+                        if (a.day === b.day) {
+                            if ((a.startTime >= b.startTime && a.startTime < b.endTime) || 
+                                (b.startTime >= a.startTime && b.startTime < a.endTime)) {
+                                conflictSet.add(a.id);
+                                conflictSet.add(b.id);
+                            }
+                        }
+                    }
+                }
+                return conflictSet;
+            }, [mySchedule, performances]);
+
+            // --- Auth Loading Screen ---
+            if (authLoading) {
+                return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="text-fuchsia-500 animate-spin" size={32} /></div>;
+            }
+
+            // --- LOGIN PAGE (Render if no user) ---
+            if (!user) {
+                return <LoginPage onLogin={handleGoogleLogin} onGuestLogin={handleGuestLogin} error={loginError} />;
+            }
+
+            // --- MAIN APP (Render if user logged in) ---
+            // Helper for rendering trip cards
+            const TripCard = ({ item }) => (
+                <div key={item.id} className="bg-[#121212] border border-white/10 rounded-xl p-4 flex justify-between items-center hover:border-fuchsia-500/50 transition-all group shadow-lg hover:shadow-fuchsia-900/20 relative overflow-hidden">
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-fuchsia-600 to-purple-600"></div>
+                    <div className="pl-2">
+                        <div className="flex items-center gap-2 mb-1">
+                            {item.type === 'gig' 
+                                ? <span className="bg-purple-500/20 text-purple-300 text-[8px] font-black px-1.5 py-0.5 rounded border border-purple-500/30 tracking-wider">GIG</span> 
+                                : <span className="bg-fuchsia-500/20 text-fuchsia-300 text-[8px] font-black px-1.5 py-0.5 rounded border border-fuchsia-500/30 tracking-wider">FESTIVAL</span>
+                            }
+                            <h4 className="font-bold text-white text-base">{item.name}</h4>
+                        </div>
+                        <div className="text-[10px] text-gray-500 flex items-center gap-2 font-medium">
+                            <span className="flex items-center gap-1"><Calendar size={10} /> {item.startDate || item.dateSaved.split('T')[0]}</span>
+                            <span className="w-0.5 h-0.5 bg-gray-700 rounded-full"></span>
+                            <span className="text-gray-400">{item.performances?.length || 0} ACTS</span>
+                        </div>
                     </div>
-                    <div className="text-[10px] text-gray-500 flex items-center gap-2 font-medium">
-                        <span className="flex items-center gap-1"><Calendar size={10} /> {item.startDate || item.dateSaved.split('T')[0]}</span>
-                        <span className="w-0.5 h-0.5 bg-gray-700 rounded-full"></span>
-                        <span className="text-gray-400">{item.performances?.length || 0} ACTS</span>
+                    {/* Changed: Buttons always visible */}
+                    <div className="flex gap-2">
+                        <button onClick={() => loadFromHistory(item)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white backdrop-blur-sm"><Upload size={14}/></button>
+                        <button onClick={(e) => requestDeleteHistory(e, item.id)} className="p-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 rounded-lg backdrop-blur-sm"><Trash2 size={14}/></button>
                     </div>
                 </div>
-                {/* Changed: Buttons always visible */}
-                <div className="flex gap-2">
-                    <button onClick={() => loadFromHistory(item)} className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white backdrop-blur-sm"><Upload size={14}/></button>
-                    <button onClick={(e) => requestDeleteHistory(e, item.id)} className="p-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 rounded-lg backdrop-blur-sm"><Trash2 size={14}/></button>
+            );
+
+            return (
+                <div className="min-h-screen bg-[#050505] text-gray-100 font-sans pb-20 selection:bg-fuchsia-500 selection:text-white relative overflow-hidden">
+                {/* Background Ambience */}
+                <div className="fixed inset-0 pointer-events-none">
+                    <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 blur-[100px] rounded-full"></div>
+                    <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-fuchsia-900/20 blur-[100px] rounded-full"></div>
                 </div>
-            </div>
-        );
 
-        return (
-            <div className="min-h-screen bg-[#050505] text-gray-100 font-sans pb-20 selection:bg-fuchsia-500 selection:text-white relative overflow-hidden">
-            {/* Background Ambience */}
-            <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-900/20 blur-[100px] rounded-full"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-fuchsia-900/20 blur-[100px] rounded-full"></div>
-            </div>
+                <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
+                <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
+                <AccountModal 
+                    isOpen={showAccount} 
+                    onClose={() => setShowAccount(false)} 
+                    user={user} 
+                    onLogin={handleGoogleLogin} 
+                    onLogout={handleLogout} 
+                />
+                <DeleteConfirmModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={confirmDeleteHistory} />
 
-            <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
-            <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
-            <AccountModal 
-                isOpen={showAccount} 
-                onClose={() => setShowAccount(false)} 
-                user={user} 
-                onLogin={handleGoogleLogin} 
-                onLogout={handleLogout} 
-            />
-            <DeleteConfirmModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={confirmDeleteHistory} />
-
-            {/* --- Top Bar --- */}
-            <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5">
-                <div className="max-w-2xl mx-auto px-4 py-2 space-y-2">
-                    {/* Title Row */}
-                    <div className="flex justify-between items-center">
-                        <div className="flex items-center space-x-2 group">
-                            <div className="bg-gradient-to-br from-fuchsia-600 to-purple-600 p-1.5 rounded-lg shadow-[0_0_15px_rgba(192,38,211,0.5)] group-hover:shadow-[0_0_25px_rgba(192,38,211,0.8)] transition-all duration-500">
-                                <Zap size={16} className="text-white" fill="currentColor" />
-                            </div>
-                            <div>
-                                <h1 className="text-sm font-black tracking-[0.2em] text-white italic leading-none">
-                                    FESTIVAL<span className="text-fuchsia-500 mx-0.5">.</span>SYNC
-                                </h1>
-                                <p className="text-[8px] text-fuchsia-400/80 font-bold tracking-widest mt-0.5">LIVE YOUR MUSIC</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setShowAccount(true)} className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all"><User size={14}/></button>
-                            <button onClick={() => setShowSettings(true)} className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all"><Settings size={14}/></button>
-                            <button onClick={() => saveCurrentToHistory()} className="p-2 text-fuchsia-300 hover:text-white bg-fuchsia-500/10 hover:bg-fuchsia-500/20 rounded-lg border border-fuchsia-500/20 transition-all"><Save size={14}/></button>
-                            <button onClick={() => startNewFestival(true)} className="p-2 text-gray-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-lg border border-white/5 transition-all"><RotateCcw size={14}/></button>
-                        </div>
-                    </div>
-
-                    {/* Config Row (Manage Mode) */}
-                    {view === 'manage' && (
-                        <div className="flex flex-col gap-2 animate-fadeIn">
-                            
-                            {/* Row 1: Type & Name */}
-                            <div className="flex gap-2 w-full">
-                                <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/5 shrink-0 h-8">
-                                    <button onClick={() => setEventType('festival')} className={`px-2 rounded-md flex items-center gap-1 transition-all h-full ${eventType === 'festival' ? 'bg-fuchsia-600 text-white shadow-lg' : 'text-gray-500'}`}><Ticket size={12}/></button>
-                                    <button onClick={() => setEventType('gig')} className={`px-2 rounded-md flex items-center gap-1 transition-all h-full ${eventType === 'gig' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-500'}`}><Mic2 size={12}/></button>
+                {/* --- Top Bar --- */}
+                <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5">
+                    <div className="max-w-2xl mx-auto px-4 py-2 space-y-2">
+                        {/* Title Row */}
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center space-x-2 group">
+                                <div className="bg-gradient-to-br from-fuchsia-600 to-purple-600 p-1.5 rounded-lg shadow-[0_0_15px_rgba(192,38,211,0.5)] group-hover:shadow-[0_0_25px_rgba(192,38,211,0.8)] transition-all duration-500">
+                                    <Zap size={16} className="text-white" fill="currentColor" />
                                 </div>
-                                <input 
-                                    value={festivalName} 
-                                    onChange={(e) => setFestivalName(e.target.value)} 
-                                    placeholder={eventType === 'festival' ? "輸入音樂祭名稱" : "輸入專場名稱"} 
-                                    className="flex-1 min-w-0 bg-white/5 border border-white/5 rounded-lg py-1 px-3 text-xs font-bold text-white focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 outline-none transition-all placeholder-gray-600 h-8"
-                                />
+                                <div>
+                                    <h1 className="text-sm font-black tracking-[0.2em] text-white italic leading-none">
+                                        FESTIVAL<span className="text-fuchsia-500 mx-0.5">.</span>SYNC
+                                    </h1>
+                                    <p className="text-[8px] text-fuchsia-400/80 font-bold tracking-widest mt-0.5">LIVE YOUR MUSIC</p>
+                                </div>
                             </div>
-                            
-                            {/* Row 2: Date Pickers (Full Width) - Compact Mode */}
-                            <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-lg border border-white/5 hover:border-white/20 transition-colors h-7 w-full">
-                                <Calendar size={12} className="text-white shrink-0 ml-1"/>
-                                <input 
-                                    type="date" 
-                                    value={startDate} 
-                                    style={{ colorScheme: 'dark' }}
-                                    onChange={(e) => { 
-                                        setStartDate(e.target.value); 
-                                        // Auto-fill end date if not set or if using festival mode default convenience
-                                        if(eventType === 'festival') setEndDate(e.target.value); 
-                                    }} 
-                                    className="bg-transparent text-[10px] font-bold text-gray-200 outline-none flex-1 uppercase text-center tracking-wide" 
-                                    placeholder="Start" 
-                                />
-                                {eventType === 'festival' && (
-                                    <>
-                                        <ArrowRight size={10} className="text-white shrink-0" />
-                                        <input 
-                                            type="date" 
-                                            min={startDate} 
-                                            value={endDate} 
-                                            style={{ colorScheme: 'dark' }}
-                                            onChange={(e) => setEndDate(e.target.value)} 
-                                            className="bg-transparent text-[10px] font-bold text-gray-200 outline-none flex-1 uppercase text-center tracking-wide" 
-                                            placeholder="End" 
-                                        />
-                                    </>
+                            <div className="flex gap-2">
+                                <button onClick={() => setShowAccount(true)} className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all"><User size={14}/></button>
+                                <button onClick={() => setShowSettings(true)} className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg border border-white/5 transition-all"><Settings size={14}/></button>
+                                <button onClick={() => saveCurrentToHistory()} className="p-2 text-fuchsia-300 hover:text-white bg-fuchsia-500/10 hover:bg-fuchsia-500/20 rounded-lg border border-fuchsia-500/20 transition-all"><Save size={14}/></button>
+                                <button onClick={() => startNewFestival(true)} className="p-2 text-gray-400 hover:text-red-400 bg-white/5 hover:bg-red-500/10 rounded-lg border border-white/5 transition-all"><RotateCcw size={14}/></button>
+                            </div>
+                        </div>
+
+                        {/* Config Row (Manage Mode) */}
+                        {view === 'manage' && (
+                            <div className="flex flex-col gap-2 animate-fadeIn">
+                                
+                                {/* Row 1: Type & Name */}
+                                <div className="flex gap-2 w-full">
+                                    <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/5 shrink-0 h-8">
+                                        <button onClick={() => setEventType('festival')} className={`px-2 rounded-md flex items-center gap-1 transition-all h-full ${eventType === 'festival' ? 'bg-fuchsia-600 text-white shadow-lg' : 'text-gray-500'}`}><Ticket size={12}/></button>
+                                        <button onClick={() => setEventType('gig')} className={`px-2 rounded-md flex items-center gap-1 transition-all h-full ${eventType === 'gig' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-500'}`}><Mic2 size={12}/></button>
+                                    </div>
+                                    <input 
+                                        value={festivalName} 
+                                        onChange={(e) => setFestivalName(e.target.value)} 
+                                        placeholder={eventType === 'festival' ? "輸入音樂祭名稱" : "輸入專場名稱"} 
+                                        className="flex-1 min-w-0 bg-white/5 border border-white/5 rounded-lg py-1 px-3 text-xs font-bold text-white focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 outline-none transition-all placeholder-gray-600 h-8"
+                                    />
+                                </div>
+                                
+                                {/* Row 2: Date Pickers (Full Width) - Compact Mode */}
+                                <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-lg border border-white/5 hover:border-white/20 transition-colors h-7 w-full">
+                                    <Calendar size={12} className="text-white shrink-0 ml-1"/>
+                                    <input 
+                                        type="date" 
+                                        value={startDate} 
+                                        style={{ colorScheme: 'dark' }}
+                                        onChange={(e) => { 
+                                            setStartDate(e.target.value); 
+                                            // Auto-fill end date if not set or if using festival mode default convenience
+                                            if(eventType === 'festival') setEndDate(e.target.value); 
+                                        }} 
+                                        className="bg-transparent text-[10px] font-bold text-gray-200 outline-none flex-1 uppercase text-center tracking-wide" 
+                                        placeholder="Start" 
+                                    />
+                                    {eventType === 'festival' && (
+                                        <>
+                                            <ArrowRight size={10} className="text-white shrink-0" />
+                                            <input 
+                                                type="date" 
+                                                min={startDate} 
+                                                value={endDate} 
+                                                style={{ colorScheme: 'dark' }}
+                                                onChange={(e) => setEndDate(e.target.value)} 
+                                                className="bg-transparent text-[10px] font-bold text-gray-200 outline-none flex-1 uppercase text-center tracking-wide" 
+                                                placeholder="End" 
+                                            />
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </header>
+
+                {/* --- Main Content --- */}
+                <main className="max-w-2xl mx-auto px-4 py-4 space-y-4 relative z-10">
+                    
+                    {/* View: MANAGE */}
+                    {view === 'manage' && (
+                        <div className="space-y-4 animate-fadeIn">
+                            {/* Tools - Modified Layout */}
+                            <div className="flex flex-col gap-2 mb-1"> 
+                                
+                                {/* Days Scroll Area */}
+                                <div className="w-full overflow-x-auto no-scrollbar pb-1">
+                                    <div className="flex gap-2 items-center">
+                                        {days.map(d => (
+                                            <button 
+                                                key={d} 
+                                                onClick={() => setActiveDay(d)}
+                                                className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wider whitespace-nowrap transition-all border shrink-0 ${
+                                                    activeDay === d 
+                                                    ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]' 
+                                                    : 'bg-black/40 text-gray-500 border-white/10 hover:border-white/30 hover:text-white'
+                                                }`}
+                                            >
+                                                {d}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                {/* Actions Row */}
+                                <div className="flex justify-between items-center pt-2 border-t border-white/5 mt-1">
+                                    <span className="text-[9px] text-gray-500 font-bold tracking-widest uppercase">ACTIONS</span>
+                                    <div className="flex gap-2">
+                                        <button 
+                                                onClick={() => { setIsAddFormOpen(!isAddFormOpen); setEditingItem(null); }} 
+                                                className={`h-8 px-3 flex items-center justify-center rounded-full border transition-all gap-1.5 ${isAddFormOpen ? 'bg-white text-black border-white' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}`}
+                                            >
+                                                <Plus size={14} className={isAddFormOpen ? "rotate-45 transition-transform" : "transition-transform"}/>
+                                                <span className="text-[10px] font-bold">ADD</span>
+                                            </button>
+                                        <button onClick={() => { setAiMode('import'); setImportDay(activeDay); setShowAIModal(true); }} className="h-8 px-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-full text-[10px] font-black text-white flex items-center gap-1.5 shadow-[0_0_20px_rgba(192,38,211,0.3)] hover:shadow-[0_0_30px_rgba(192,38,211,0.5)] transition-all transform hover:-translate-y-0.5">
+                                            <Sparkles size={12}/> 
+                                            <span>AI IMPORT</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Form */}
+                            <AddPerformanceForm isOpen={isAddFormOpen} onAdd={addPerformance} onUpdate={updatePerformance} onDelete={removePerformance} onCancel={() => setIsAddFormOpen(false)} editingItem={null} activeDay={activeDay} days={days} />
+
+                            {/* List */}
+                            <div className="space-y-2">
+                                {currentDayPerformances.length === 0 ? (
+                                    <div className="text-center py-12 border-2 border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
+                                        <p className="text-gray-500 text-[10px] font-bold tracking-widest uppercase">LINEUP IS EMPTY</p>
+                                    </div>
+                                ) : (
+                                    currentDayPerformances.map(p => (
+                                        <div key={p.id}>
+                                            <div 
+                                                onClick={() => toggleMySchedule(p.id)}
+                                                className={`relative group rounded-xl p-3 border backdrop-blur-sm transition-all cursor-pointer ${
+                                                    mySchedule.includes(p.id) 
+                                                    ? 'bg-fuchsia-900/10 border-fuchsia-500/50 shadow-[0_0_20px_rgba(192,38,211,0.1)]' 
+                                                    : 'bg-[#121212]/80 border-white/5 hover:bg-white/5'
+                                                } ${editingItem?.id === p.id ? 'ring-1 ring-fuchsia-500' : ''}`}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex-1">
+                                                        <h3 className={`font-black text-base flex items-center gap-2 tracking-wide ${mySchedule.includes(p.id) ? 'text-fuchsia-100' : 'text-white'}`}>
+                                                            {p.band}
+                                                            {conflicts.has(p.id) && mySchedule.includes(p.id) && <AlertTriangle size={12} className="text-yellow-500 animate-pulse" />}
+                                                        </h3>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[10px] font-bold font-mono text-fuchsia-300 bg-fuchsia-500/10 px-1.5 py-0.5 rounded border border-fuchsia-500/20 shadow-sm">{p.startTime} - {p.endTime}</span>
+                                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1"><MapPin size={8}/> {p.stage}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col gap-2 items-end pl-2">
+                                                        <Heart size={16} className={`transition-all duration-300 ${mySchedule.includes(p.id) ? 'fill-fuchsia-500 text-fuchsia-500 scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : 'text-gray-600 hover:text-gray-400'}`} />
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditingItem(editingItem?.id === p.id ? null : p); setIsAddFormOpen(false); }} className="text-gray-600 hover:text-white transition-colors"><Edit size={14}/></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {editingItem?.id === p.id && <AddPerformanceForm isOpen={true} onUpdate={updatePerformance} onDelete={removePerformance} onCancel={() => setEditingItem(null)} editingItem={editingItem} activeDay={activeDay} days={days} isInline={true} />}
+                                        </div>
+                                    ))
                                 )}
                             </div>
                         </div>
                     )}
-                </div>
-            </header>
 
-            {/* --- Main Content --- */}
-            <main className="max-w-2xl mx-auto px-4 py-4 space-y-4 relative z-10">
-                
-                {/* View: MANAGE */}
-                {view === 'manage' && (
-                    <div className="space-y-4 animate-fadeIn">
-                        {/* Tools - Modified Layout */}
-                        <div className="flex flex-col gap-2 mb-1"> 
+                    {/* View: PROGRAM (Timeline) */}
+                    {view === 'program' && (
+                        <div className="h-[calc(100vh-140px)] flex flex-col animate-fadeIn">
+                            {/* Header & Tools */}
+                            <div className="flex justify-between items-center mb-1 shrink-0">
+                                <div className="flex flex-col">
+                                    <h2 className="text-white font-black text-lg italic tracking-wide truncate max-w-[200px]">{festivalName || 'UNTITLED FEST'}</h2>
+                                    {/* Added: Stats Display */}
+                                    <div className="text-[10px] text-gray-400 font-medium mt-0.5">
+                                        已選 <span className="text-fuchsia-400 font-bold">{mySchedule.length}</span> / 共 {performances.length} 團
+                                    </div>
+                                </div>
+                                <button onClick={() => { setAiMode('recommend'); setShowAIModal(true); }} className="text-[9px] bg-white text-black font-black px-3 py-1.5 rounded-full flex items-center gap-1 hover:scale-105 transition-transform shadow-lg shadow-white/20"><Sparkles size={10} className="text-fuchsia-600" /> AI 推薦</button>
+                            </div>
                             
-                            {/* Days Scroll Area */}
-                            <div className="w-full overflow-x-auto no-scrollbar pb-1">
-                                <div className="flex gap-2 items-center">
-                                    {days.map(d => (
-                                        <button 
-                                            key={d} 
-                                            onClick={() => setActiveDay(d)}
-                                            className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wider whitespace-nowrap transition-all border shrink-0 ${
-                                                activeDay === d 
-                                                ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]' 
-                                                : 'bg-black/40 text-gray-500 border-white/10 hover:border-white/30 hover:text-white'
-                                            }`}
-                                        >
-                                            {d}
-                                        </button>
+                            {/* Days Tab */}
+                            <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3 shrink-0 py-2">
+                                {days.map(d => (
+                                    <button key={d} onClick={() => setActiveDay(d)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap border transition-all ${activeDay === d ? 'bg-fuchsia-600 border-fuchsia-500 text-white shadow-[0_0_15px_rgba(192,38,211,0.4)]' : 'bg-transparent border-white/10 text-gray-500 hover:text-white'}`}>{d}</button>
+                                ))}
+                            </div>
+
+                            {/* Columns */}
+                            <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
+                                <div className="flex gap-3 h-full px-1 min-w-min">
+                                    {currentDayPerformances.length === 0 ? <div className="text-gray-600 m-auto text-xs font-bold tracking-widest">NO GIGS TODAY</div> : uniqueStages.map(stage => (
+                                        <div key={stage} className="flex-none w-[220px] flex flex-col h-full bg-[#121212] rounded-xl border border-white/10 overflow-hidden shadow-2xl">
+                                            <div className="p-3 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent text-center shrink-0">
+                                                <h3 className="text-fuchsia-300 font-black text-xs tracking-[0.2em] uppercase drop-shadow-md">{stage}</h3>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                                                {currentDayPerformances.filter(p => p.stage === stage).map(p => (
+                                                    <div 
+                                                        key={p.id} 
+                                                        onClick={() => toggleMySchedule(p.id)} // Click to Toggle
+                                                        className={`p-3 rounded-lg border backdrop-blur-md transition-all cursor-pointer ${
+                                                            mySchedule.includes(p.id) 
+                                                            ? 'bg-fuchsia-600/20 border-fuchsia-500/50 shadow-[0_0_15px_rgba(192,38,211,0.15)] opacity-100' 
+                                                            : 'bg-white/5 border-white/5 opacity-50 grayscale hover:grayscale-0 hover:opacity-80'
+                                                        }`}
+                                                    >
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <span className="font-bold text-white text-sm leading-tight">{p.band}</span>
+                                                            {mySchedule.includes(p.id) && <Heart size={12} className="fill-fuchsia-500 text-fuchsia-500" />}
+                                                        </div>
+                                                        <div className="text-[10px] text-gray-400 font-mono font-bold">{p.startTime} - {p.endTime}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* View: TRIPS (History) */}
+                    {view === 'trips' && (
+                        <div className="space-y-6 animate-fadeIn pb-20">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="p-1.5 bg-transparent border border-fuchsia-500 rounded-lg">
+                                    <History className="text-fuchsia-500" size={18} />
+                                </div>
+                                <h2 className="text-xl font-black text-white italic tracking-wide">MY SCHEDULES</h2>
+                            </div>
                             
-                            {/* Actions Row */}
-                            <div className="flex justify-between items-center pt-2 border-t border-white/5 mt-1">
-                                <span className="text-[9px] text-gray-500 font-bold tracking-widest uppercase">ACTIONS</span>
-                                <div className="flex gap-2">
-                                    <button 
-                                            onClick={() => { setIsAddFormOpen(!isAddFormOpen); setEditingItem(null); }} 
-                                            className={`h-8 px-3 flex items-center justify-center rounded-full border transition-all gap-1.5 ${isAddFormOpen ? 'bg-white text-black border-white' : 'bg-white/5 text-white border-white/20 hover:bg-white/10'}`}
-                                        >
-                                            <Plus size={14} className={isAddFormOpen ? "rotate-45 transition-transform" : "transition-transform"}/>
-                                            <span className="text-[10px] font-bold">ADD</span>
-                                        </button>
-                                    <button onClick={() => { setAiMode('import'); setImportDay(activeDay); setShowAIModal(true); }} className="h-8 px-3 bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-full text-[10px] font-black text-white flex items-center gap-1.5 shadow-[0_0_20px_rgba(192,38,211,0.3)] hover:shadow-[0_0_30px_rgba(192,38,211,0.5)] transition-all transform hover:-translate-y-0.5">
-                                        <Sparkles size={12}/> 
-                                        <span>AI IMPORT</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Form */}
-                        <AddPerformanceForm isOpen={isAddFormOpen} onAdd={addPerformance} onUpdate={updatePerformance} onDelete={removePerformance} onCancel={() => setIsAddFormOpen(false)} editingItem={null} activeDay={activeDay} days={days} />
-
-                        {/* List */}
-                        <div className="space-y-2">
-                            {currentDayPerformances.length === 0 ? (
-                                <div className="text-center py-12 border-2 border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
-                                    <p className="text-gray-500 text-[10px] font-bold tracking-widest uppercase">LINEUP IS EMPTY</p>
+                            {history.length === 0 ? (
+                                <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
+                                    <FolderOpen size={32} className="mx-auto text-gray-700 mb-2" />
+                                    <p className="text-gray-500 text-[10px] font-bold tracking-widest uppercase">NO SAVED TRIPS</p>
                                 </div>
                             ) : (
-                                currentDayPerformances.map(p => (
-                                    <div key={p.id}>
-                                        <div 
-                                            onClick={() => toggleMySchedule(p.id)}
-                                            className={`relative group rounded-xl p-3 border backdrop-blur-sm transition-all cursor-pointer ${
-                                                mySchedule.includes(p.id) 
-                                                ? 'bg-fuchsia-900/10 border-fuchsia-500/50 shadow-[0_0_20px_rgba(192,38,211,0.1)]' 
-                                                : 'bg-[#121212]/80 border-white/5 hover:bg-white/5'
-                                            } ${editingItem?.id === p.id ? 'ring-1 ring-fuchsia-500' : ''}`}
-                                        >
-                                            <div className="flex justify-between items-start">
-                                                <div className="flex-1">
-                                                    <h3 className={`font-black text-base flex items-center gap-2 tracking-wide ${mySchedule.includes(p.id) ? 'text-fuchsia-100' : 'text-white'}`}>
-                                                        {p.band}
-                                                        {conflicts.has(p.id) && mySchedule.includes(p.id) && <AlertTriangle size={12} className="text-yellow-500 animate-pulse" />}
-                                                    </h3>
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <span className="text-[10px] font-bold font-mono text-fuchsia-300 bg-fuchsia-500/10 px-1.5 py-0.5 rounded border border-fuchsia-500/20 shadow-sm">{p.startTime} - {p.endTime}</span>
-                                                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1"><MapPin size={8}/> {p.stage}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col gap-2 items-end pl-2">
-                                                    <Heart size={16} className={`transition-all duration-300 ${mySchedule.includes(p.id) ? 'fill-fuchsia-500 text-fuchsia-500 scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : 'text-gray-600 hover:text-gray-400'}`} />
-                                                    <button onClick={(e) => { e.stopPropagation(); setEditingItem(editingItem?.id === p.id ? null : p); setIsAddFormOpen(false); }} className="text-gray-600 hover:text-white transition-colors"><Edit size={14}/></button>
-                                                </div>
+                                <>
+                                    {/* Upcoming Section */}
+                                    {upcomingTrips.length > 0 && (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 text-fuchsia-400">
+                                                <Zap size={14} />
+                                                <span className="text-xs font-black tracking-widest uppercase">UPCOMING</span>
+                                            </div>
+                                            <div className="grid gap-3">
+                                                {upcomingTrips.map(item => <TripCard key={item.id} item={item} />)}
                                             </div>
                                         </div>
-                                        {editingItem?.id === p.id && <AddPerformanceForm isOpen={true} onUpdate={updatePerformance} onDelete={removePerformance} onCancel={() => setEditingItem(null)} editingItem={editingItem} activeDay={activeDay} days={days} isInline={true} />}
-                                    </div>
-                                ))
+                                    )}
+
+                                    {/* History Section */}
+                                    {pastTrips.length > 0 && (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 text-gray-500">
+                                                <Hourglass size={14} />
+                                                <span className="text-xs font-black tracking-widest uppercase">HISTORY</span>
+                                            </div>
+                                            <div className="grid gap-3 opacity-80 hover:opacity-100 transition-opacity">
+                                                {pastTrips.map(item => <TripCard key={item.id} item={item} />)}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
+                    )}
+
+                </main>
+
+                {/* --- Bottom Nav --- */}
+                <nav className="fixed bottom-0 w-full bg-[#050505]/90 backdrop-blur-xl border-t border-white/5 pb-safe z-50">
+                    <div className="flex justify-around max-w-2xl mx-auto relative">
+                        <div className="absolute top-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent"></div>
+                        <button onClick={() => setView('manage')} className={`flex-1 py-3 flex flex-col items-center gap-1 transition-all group ${view === 'manage' ? 'text-fuchsia-400' : 'text-gray-600 hover:text-gray-400'}`}>
+                            <List size={20} className={`transition-transform duration-300 ${view === 'manage' ? 'scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : ''}`} />
+                            <span className="text-[8px] font-black tracking-widest uppercase">管理</span>
+                        </button>
+                        <button onClick={() => setView('program')} className={`flex-1 py-3 flex flex-col items-center gap-1 transition-all group ${view === 'program' ? 'text-fuchsia-400' : 'text-gray-600 hover:text-gray-400'}`}>
+                            <LayoutGrid size={20} className={`transition-transform duration-300 ${view === 'program' ? 'scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : ''}`} />
+                            <span className="text-[8px] font-black tracking-widest uppercase">節目表</span>
+                        </button>
+                        <button onClick={() => setView('trips')} className={`flex-1 py-3 flex flex-col items-center gap-1 transition-all group ${view === 'trips' ? 'text-fuchsia-400' : 'text-gray-600 hover:text-gray-400'}`}>
+                            <History size={20} className={`transition-transform duration-300 ${view === 'trips' ? 'scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : ''}`} />
+                            <span className="text-[8px] font-black tracking-widest uppercase">行程紀錄</span>
+                        </button>
                     </div>
-                )}
+                </nav>
 
-                {/* View: PROGRAM (Timeline) */}
-                {view === 'program' && (
-                    <div className="h-[calc(100vh-140px)] flex flex-col animate-fadeIn">
-                        {/* Header & Tools */}
-                        <div className="flex justify-between items-center mb-1 shrink-0">
-                            <div className="flex flex-col">
-                                <h2 className="text-white font-black text-lg italic tracking-wide truncate max-w-[200px]">{festivalName || 'UNTITLED FEST'}</h2>
-                                {/* Added: Stats Display */}
-                                <div className="text-[10px] text-gray-400 font-medium mt-0.5">
-                                    已選 <span className="text-fuchsia-400 font-bold">{mySchedule.length}</span> / 共 {performances.length} 團
-                                </div>
+                {/* --- AI Modal --- */}
+                {showAIModal && (
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
+                        <div className="bg-[#121212] w-full max-w-sm rounded-2xl border border-white/10 shadow-[0_0_50px_rgba(192,38,211,0.15)] overflow-hidden flex flex-col max-h-[85vh] relative">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-600/10 blur-[80px] pointer-events-none"></div>
+                            
+                            <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02] relative z-10">
+                                <h3 className="text-base font-black text-white flex items-center gap-2 italic">
+                                    <Sparkles className="text-fuchsia-500" size={16} /> 
+                                    {aiMode === 'import' ? 'AI IMPORT' : 'AI SCHEDULER'}
+                                </h3>
+                                <button onClick={() => { setShowAIModal(false); setAiError(''); setSelectedImage(null); }} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
                             </div>
-                            <button onClick={() => { setAiMode('recommend'); setShowAIModal(true); }} className="text-[9px] bg-white text-black font-black px-3 py-1.5 rounded-full flex items-center gap-1 hover:scale-105 transition-transform shadow-lg shadow-white/20"><Sparkles size={10} className="text-fuchsia-600" /> AI 推薦</button>
-                        </div>
-                        
-                        {/* Days Tab */}
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3 shrink-0 py-2">
-                            {days.map(d => (
-                                <button key={d} onClick={() => setActiveDay(d)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap border transition-all ${activeDay === d ? 'bg-fuchsia-600 border-fuchsia-500 text-white shadow-[0_0_15px_rgba(192,38,211,0.4)]' : 'bg-transparent border-white/10 text-gray-500 hover:text-white'}`}>{d}</button>
-                            ))}
-                        </div>
-
-                        {/* Columns */}
-                        <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
-                            <div className="flex gap-3 h-full px-1 min-w-min">
-                                {currentDayPerformances.length === 0 ? <div className="text-gray-600 m-auto text-xs font-bold tracking-widest">NO GIGS TODAY</div> : uniqueStages.map(stage => (
-                                    <div key={stage} className="flex-none w-[220px] flex flex-col h-full bg-[#121212] rounded-xl border border-white/10 overflow-hidden shadow-2xl">
-                                        <div className="p-3 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent text-center shrink-0">
-                                            <h3 className="text-fuchsia-300 font-black text-xs tracking-[0.2em] uppercase drop-shadow-md">{stage}</h3>
-                                        </div>
-                                        <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-                                            {currentDayPerformances.filter(p => p.stage === stage).map(p => (
-                                                <div 
-                                                    key={p.id} 
-                                                    onClick={() => toggleMySchedule(p.id)} // Click to Toggle
-                                                    className={`p-3 rounded-lg border backdrop-blur-md transition-all cursor-pointer ${
-                                                        mySchedule.includes(p.id) 
-                                                        ? 'bg-fuchsia-600/20 border-fuchsia-500/50 shadow-[0_0_15px_rgba(192,38,211,0.15)] opacity-100' 
-                                                        : 'bg-white/5 border-white/5 opacity-50 grayscale hover:grayscale-0 hover:opacity-80'
-                                                    }`}
+                            
+                            <div className="p-5 overflow-y-auto relative z-10">
+                                {aiMode === 'import' ? (
+                                    <div className="space-y-4">
+                                        <p className="text-gray-400 text-[10px] font-medium leading-relaxed">上傳音樂祭的時間表圖片，AI 將自動辨識內容並轉換成可編輯的資料。</p>
+                                        
+                                        <div className="bg-black/30 p-2.5 rounded-lg border border-white/5 flex items-center justify-between">
+                                            <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">IMPORT TO</span>
+                                            {/* Styled Dropdown in AI Modal */}
+                                            <div className="relative">
+                                                <select 
+                                                    value={importDay} 
+                                                    onChange={(e) => setImportDay(e.target.value)} 
+                                                    className="bg-white/5 border border-white/10 rounded-md pl-2 pr-6 py-1 text-white text-[10px] font-bold outline-none focus:border-fuchsia-500 transition-colors appearance-none cursor-pointer"
                                                 >
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <span className="font-bold text-white text-sm leading-tight">{p.band}</span>
-                                                        {mySchedule.includes(p.id) && <Heart size={12} className="fill-fuchsia-500 text-fuchsia-500" />}
+                                                    {days.map(d => <option key={d} value={d} className="text-black bg-white">{d}</option>)}
+                                                </select>
+                                                <div className="absolute right-1.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                                                    <ChevronDown size={10} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-white/10 hover:border-fuchsia-500/50 rounded-xl p-8 text-center cursor-pointer transition-all bg-white/[0.02] group">
+                                            {selectedImage ? (
+                                                <img src={selectedImage} alt="Preview" className="max-h-40 mx-auto rounded-lg shadow-2xl object-contain" />
+                                            ) : (
+                                                <div className="flex flex-col items-center gap-3 text-gray-600 group-hover:text-fuchsia-400 transition-colors">
+                                                    <div className="p-3 bg-white/5 rounded-full group-hover:bg-fuchsia-500/10 transition-colors">
+                                                        <Camera size={28} />
                                                     </div>
-                                                    <div className="text-[10px] text-gray-400 font-mono font-bold">{p.startTime} - {p.endTime}</div>
+                                                    <span className="text-[10px] font-bold tracking-widest uppercase">TAP TO UPLOAD</span>
                                                 </div>
-                                            ))}
+                                            )}
+                                            <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                                         </div>
+
+                                        {aiError && <div className="p-3 bg-red-900/20 text-red-200 text-[10px] font-bold rounded-lg flex items-center gap-2 border border-red-500/30"><AlertCircle size={14} /> {aiError}</div>}
+                                        
+                                        <button onClick={runAIImageImport} disabled={!selectedImage || aiLoading} className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-fuchsia-500/30 text-xs">
+                                            {aiLoading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                                            {aiLoading ? 'ANALYZING...' : 'START IMPORT'}
+                                        </button>
                                     </div>
-                                ))}
+                                ) : (
+                                    <div className="space-y-4">
+                                        <p className="text-gray-400 text-[10px] font-medium leading-relaxed">告訴 AI 你喜歡什麼樣的音樂或氛圍，或是你的空閒時間，它會幫你從目前的節目表中挑選。</p>
+                                        <textarea 
+                                            value={aiPrompt} 
+                                            onChange={(e) => setAiPrompt(e.target.value)} 
+                                            placeholder="例如：「我喜歡聽獨立搖滾」、「幫我安排下午三點後的行程」、「我想聽氣氛比較Chill的團」..." 
+                                            className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none resize-none text-xs placeholder-gray-700 transition-colors"
+                                        ></textarea>
+                                        
+                                        {aiError && <div className="p-3 bg-red-900/20 text-red-200 text-[10px] font-bold rounded-lg flex items-center gap-2 border border-red-500/30"><AlertCircle size={14} /> {aiError}</div>}
+                                        
+                                        <button onClick={runAIRecommend} disabled={!aiPrompt.trim() || aiLoading} className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-fuchsia-500/30 text-xs">
+                                            {aiLoading ? <Loader2 className="animate-spin" size={16} /> : <MessageSquare size={16} />}
+                                            {aiLoading ? 'THINKING...' : 'GET RECOMMENDATIONS'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
                 )}
+            </div>
+          );
+        };
 
-                {/* View: TRIPS (History) */}
-                {view === 'trips' && (
-                    <div className="space-y-6 animate-fadeIn pb-20">
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="p-1.5 bg-transparent border border-fuchsia-500 rounded-lg">
-                                <History className="text-fuchsia-500" size={18} />
-                            </div>
-                            <h2 className="text-xl font-black text-white italic tracking-wide">MY SCHEDULES</h2>
-                        </div>
-                        
-                        {history.length === 0 ? (
-                            <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl bg-white/[0.02]">
-                                <FolderOpen size={32} className="mx-auto text-gray-700 mb-2" />
-                                <p className="text-gray-500 text-[10px] font-bold tracking-widest uppercase">NO SAVED TRIPS</p>
-                            </div>
-                        ) : (
-                            <>
-                                {/* Upcoming Section */}
-                                {upcomingTrips.length > 0 && (
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2 text-fuchsia-400">
-                                            <Zap size={14} />
-                                            <span className="text-xs font-black tracking-widest uppercase">UPCOMING</span>
-                                        </div>
-                                        <div className="grid gap-3">
-                                            {upcomingTrips.map(item => <TripCard key={item.id} item={item} />)}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* History Section */}
-                                {pastTrips.length > 0 && (
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2 text-gray-500">
-                                            <Hourglass size={14} />
-                                            <span className="text-xs font-black tracking-widest uppercase">HISTORY</span>
-                                        </div>
-                                        <div className="grid gap-3 opacity-80 hover:opacity-100 transition-opacity">
-                                            {pastTrips.map(item => <TripCard key={item.id} item={item} />)}
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-                )}
-
-            </main>
-
-            {/* --- Bottom Nav --- */}
-            <nav className="fixed bottom-0 w-full bg-[#050505]/90 backdrop-blur-xl border-t border-white/5 pb-safe z-50">
-                <div className="flex justify-around max-w-2xl mx-auto relative">
-                    <div className="absolute top-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent"></div>
-                    <button onClick={() => setView('manage')} className={`flex-1 py-3 flex flex-col items-center gap-1 transition-all group ${view === 'manage' ? 'text-fuchsia-400' : 'text-gray-600 hover:text-gray-400'}`}>
-                        <List size={20} className={`transition-transform duration-300 ${view === 'manage' ? 'scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : ''}`} />
-                        <span className="text-[8px] font-black tracking-widest uppercase">管理</span>
-                    </button>
-                    <button onClick={() => setView('program')} className={`flex-1 py-3 flex flex-col items-center gap-1 transition-all group ${view === 'program' ? 'text-fuchsia-400' : 'text-gray-600 hover:text-gray-400'}`}>
-                        <LayoutGrid size={20} className={`transition-transform duration-300 ${view === 'program' ? 'scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : ''}`} />
-                        <span className="text-[8px] font-black tracking-widest uppercase">節目表</span>
-                    </button>
-                    <button onClick={() => setView('trips')} className={`flex-1 py-3 flex flex-col items-center gap-1 transition-all group ${view === 'trips' ? 'text-fuchsia-400' : 'text-gray-600 hover:text-gray-400'}`}>
-                        <History size={20} className={`transition-transform duration-300 ${view === 'trips' ? 'scale-110 drop-shadow-[0_0_8px_rgba(232,121,249,0.8)]' : ''}`} />
-                        <span className="text-[8px] font-black tracking-widest uppercase">行程紀錄</span>
-                    </button>
-                </div>
-            </nav>
-
-            {/* --- AI Modal --- */}
-            {showAIModal && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
-                    <div className="bg-[#121212] w-full max-w-sm rounded-2xl border border-white/10 shadow-[0_0_50px_rgba(192,38,211,0.15)] overflow-hidden flex flex-col max-h-[85vh] relative">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-fuchsia-600/10 blur-[80px] pointer-events-none"></div>
-                        
-                        <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02] relative z-10">
-                            <h3 className="text-base font-black text-white flex items-center gap-2 italic">
-                                <Sparkles className="text-fuchsia-500" size={16} /> 
-                                {aiMode === 'import' ? 'AI IMPORT' : 'AI SCHEDULER'}
-                            </h3>
-                            <button onClick={() => { setShowAIModal(false); setAiError(''); setSelectedImage(null); }} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
-                        </div>
-                        
-                        <div className="p-5 overflow-y-auto relative z-10">
-                            {aiMode === 'import' ? (
-                                <div className="space-y-4">
-                                    <p className="text-gray-400 text-[10px] font-medium leading-relaxed">上傳音樂祭的時間表圖片，AI 將自動辨識內容並轉換成可編輯的資料。</p>
-                                    
-                                    <div className="bg-black/30 p-2.5 rounded-lg border border-white/5 flex items-center justify-between">
-                                        <span className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">IMPORT TO</span>
-                                        {/* Styled Dropdown in AI Modal */}
-                                        <div className="relative">
-                                            <select 
-                                                value={importDay} 
-                                                onChange={(e) => setImportDay(e.target.value)} 
-                                                className="bg-white/5 border border-white/10 rounded-md pl-2 pr-6 py-1 text-white text-[10px] font-bold outline-none focus:border-fuchsia-500 transition-colors appearance-none cursor-pointer"
-                                            >
-                                                {days.map(d => <option key={d} value={d} className="text-black bg-white">{d}</option>)}
-                                            </select>
-                                            <div className="absolute right-1.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                                                <ChevronDown size={10} />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-white/10 hover:border-fuchsia-500/50 rounded-xl p-8 text-center cursor-pointer transition-all bg-white/[0.02] group">
-                                        {selectedImage ? (
-                                            <img src={selectedImage} alt="Preview" className="max-h-40 mx-auto rounded-lg shadow-2xl object-contain" />
-                                        ) : (
-                                            <div className="flex flex-col items-center gap-3 text-gray-600 group-hover:text-fuchsia-400 transition-colors">
-                                                <div className="p-3 bg-white/5 rounded-full group-hover:bg-fuchsia-500/10 transition-colors">
-                                                    <Camera size={28} />
-                                                </div>
-                                                <span className="text-[10px] font-bold tracking-widest uppercase">TAP TO UPLOAD</span>
-                                            </div>
-                                        )}
-                                        <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-                                    </div>
-
-                                    {aiError && <div className="p-3 bg-red-900/20 text-red-200 text-[10px] font-bold rounded-lg flex items-center gap-2 border border-red-500/30"><AlertCircle size={14} /> {aiError}</div>}
-                                    
-                                    <button onClick={runAIImageImport} disabled={!selectedImage || aiLoading} className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-fuchsia-500/30 text-xs">
-                                        {aiLoading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                                        {aiLoading ? 'ANALYZING...' : 'START IMPORT'}
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    <p className="text-gray-400 text-[10px] font-medium leading-relaxed">告訴 AI 你喜歡什麼樣的音樂或氛圍，或是你的空閒時間，它會幫你從目前的節目表中挑選。</p>
-                                    <textarea 
-                                        value={aiPrompt} 
-                                        onChange={(e) => setAiPrompt(e.target.value)} 
-                                        placeholder="例如：「我喜歡聽獨立搖滾」、「幫我安排下午三點後的行程」、「我想聽氣氛比較Chill的團」..." 
-                                        className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-3 text-white focus:border-fuchsia-500 outline-none resize-none text-xs placeholder-gray-700 transition-colors"
-                                    ></textarea>
-                                    
-                                    {aiError && <div className="p-3 bg-red-900/20 text-red-200 text-[10px] font-bold rounded-lg flex items-center gap-2 border border-red-500/30"><AlertCircle size={14} /> {aiError}</div>}
-                                    
-                                    <button onClick={runAIRecommend} disabled={!aiPrompt.trim() || aiLoading} className="w-full bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black py-3 rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-fuchsia-500/30 text-xs">
-                                        {aiLoading ? <Loader2 className="animate-spin" size={16} /> : <MessageSquare size={16} />}
-                                        {aiLoading ? 'THINKING...' : 'GET RECOMMENDATIONS'}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-      );
-    };
-
-    const root = createRoot(document.getElementById('root'));
-    root.render(<App />);
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
 
     </script>
 </body>
-
 </html>
