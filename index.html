@@ -108,21 +108,22 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        // 設定主模型 (2.5 Preview) 
-        const PRIMARY_MODEL = "gemini-2.5-flash-preview-09-2025";
-        
-        // 修正：將備用模型改回穩定的 1.5 Flash，解決 'model not found' 的錯誤
-        const FALLBACK_MODEL = "gemini-1.5-flash";
+        // 定義模型嘗試順序：優先使用 2.5 -> 2.5 Lite -> 3.0 Flash Preview (User Requested)
+        const MODEL_SEQUENCE = [
+            "gemini-2.5-flash-preview-09-2025",
+            "gemini-2.5-flash-lite-preview-09-2025",
+            "gemini-3-flash-preview"
+        ];
 
-        // Helper: Call Gemini API with Auto-Fallback
+        // Helper: Call Gemini API with Multi-Stage Fallback
         const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "") => {
-            const apiKey = userApiKey || ""; 
+            const apiKey = (userApiKey || "").trim(); 
 
             if (!apiKey) {
                 throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
             }
 
-            // 建立請求 Payload (共用)
+            // 建立共用的請求內容 (Payload)
             const createPayload = () => ({
                 contents: [
                     {
@@ -152,8 +153,8 @@
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    const error = new Error(errorData.error?.message || `HTTP Error ${response.status}`);
-                    error.status = response.status; // 附加狀態碼以便判斷
+                    const error = new Error(errorData.error?.message || response.statusText);
+                    error.status = response.status;
                     throw error;
                 }
                 
@@ -164,29 +165,37 @@
                 return JSON.parse(text);
             };
 
-            try {
-                // 1. 優先嘗試主模型 (2.5)
-                return await executeRequest(PRIMARY_MODEL);
-            } catch (error) {
-                // 2. 判斷是否需要切換模型 
-                // 403: 權限不足/未啟用 (常見於新 Key 未啟用 2.5)
-                // 429: 請求過多 (Rate Limit)
-                // 503: 服務過載
-                if (error.status === 403 || error.status === 429 || error.status === 503) {
-                    console.warn(`Primary model (${PRIMARY_MODEL}) failed with status ${error.status}. Switching to fallback model (${FALLBACK_MODEL})...`);
+            // 迴圈嘗試模型清單
+            let lastError = null;
+
+            for (const model of MODEL_SEQUENCE) {
+                try {
+                    return await executeRequest(model);
+                } catch (error) {
+                    lastError = error;
                     
-                    try {
-                        // 3. 嘗試備用模型 (1.5)
-                        return await executeRequest(FALLBACK_MODEL);
-                    } catch (fallbackError) {
-                        // 如果備用模型也失敗，拋出包含兩個錯誤的訊息
-                        throw new Error(`AI 服務暫時無法使用。\n主模型錯誤: ${error.message}\n備用模型錯誤: ${fallbackError.message}`);
+                    // 錯誤處理：
+                    // 1. 如果是 Key 無效，直接拋出，不用試下一個模型了
+                    if (error.message.includes("API key not valid") || error.message.includes("API Key 無效")) {
+                         throw new Error("API Key 無效。請檢查 Key 是否正確或已被刪除。");
                     }
+
+                    // 2. 如果是可重試的錯誤 (429 Rate Limit, 503 Busy, 404 Not Found)，則嘗試下一個模型
+                    if (error.status === 429 || error.status === 503 || error.status === 404) {
+                        console.warn(`Model ${model} failed with status ${error.status}. Switching to next model...`);
+                        continue; // 進入下一次迴圈，嘗試下一個模型
+                    }
+
+                    // 3. 其他錯誤 (如參數錯誤)，直接拋出
+                    throw error;
                 }
-                
-                // 其他錯誤 (如 JSON 解析失敗、Prompt 錯誤等) 直接拋出
-                throw error;
             }
+
+            // 如果迴圈跑完都沒成功
+            let msg = "AI 服務暫時無法使用 (所有備用模型皆失敗)。";
+            if (lastError?.status === 429) msg += "\n(所有模型使用量皆達上限)";
+            msg += `\n最後嘗試錯誤: ${lastError?.message}`;
+            throw new Error(msg);
         };
 
         // Helper: Convert file to Base64
@@ -254,7 +263,7 @@
                                     className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2.5 text-white focus:border-fuchsia-500 focus:ring-1 focus:ring-fuchsia-500 outline-none transition-all placeholder-gray-600 text-xs"
                                 />
                                 <p className="text-[10px] text-gray-400">
-                                    需要設定金鑰才能使用 AI 圖片匯入與排程建議功能。
+                                    請至 Google AI Studio 申請 Key。注意：不要填入 Firebase 的 Key。
                                 </p>
                             </div>
 
@@ -643,9 +652,11 @@
             }, []);
 
             const handleSaveApiKey = (key) => {
-                setApiKey(key);
-                localStorage.setItem('gemini_api_key', key);
-                showNotification("API Key 已儲存");
+                // 修正：儲存時自動去除空白
+                const trimmedKey = key ? key.trim() : '';
+                setApiKey(trimmedKey);
+                localStorage.setItem('gemini_api_key', trimmedKey);
+                showNotification("API Key 已儲存 (已自動去除空白)");
             };
 
             // --- Firestore History Sync ---
