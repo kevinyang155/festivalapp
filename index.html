@@ -67,7 +67,7 @@
             Music, Filter, Sparkles, Zap, LayoutGrid, List, History, 
             Save, RotateCcw, Settings, Key, LogOut, Edit, Heart, Ticket, Mic2,
             AlertCircle, Check, AlertTriangle, FolderOpen, MessageSquare, ChevronDown, ArrowRight, Hourglass,
-            LogIn, User, Info, Search
+            LogIn, User, Info, Search, ThumbsUp
         } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { 
@@ -242,7 +242,7 @@
             const icon = type === 'success' ? <Check size={14} /> : <AlertTriangle size={14} />;
 
             return (
-                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] px-4 py-2 rounded-full shadow-[0_0_20px_rgba(192,38,211,0.4)] flex items-center gap-2 text-white font-bold animate-slideDown backdrop-blur-md border border-white/20 ${bgColor}`}>
+                <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] px-4 py-2 rounded-full shadow-[0_0_20px_rgba(192,38,211,0.4)] flex items-center gap-2 text-white font-bold animate-slideDown backdrop-blur-md border border-white/20 ${bgColor}`}>
                     {icon}
                     <span className="text-xs tracking-wide whitespace-nowrap">{message}</span>
                     <button onClick={onClose} className="ml-1 opacity-80 hover:opacity-100">
@@ -252,7 +252,7 @@
             );
         };
 
-        // New Component: Artist Info Modal
+        // New Component: Artist Info Modal (Simple Info)
         const ArtistInfoModal = ({ isOpen, onClose, data, loading }) => {
             if (!isOpen) return null;
 
@@ -1043,37 +1043,40 @@
                     You are a festival guide. User gives preferences.
                     You have access to: ${JSON.stringify(performances.map(p => ({ id: p.id, band: p.band, style: "unknown" })))}.
                     Select matching performance IDs based on user's taste.
-                    Return JSON: { "selectedIds": [string], "message": string (Traditional Chinese comment) }
+                    Return JSON: { 
+                        "selectedIds": [string], 
+                        "message": string (Traditional Chinese comment) 
+                    }
                 `;
 
                 try {
                     // 自動降級機制：先嘗試用 Search (true)
-                    try {
-                        const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, true);
-                        if (result.selectedIds) {
+                    const processResult = (result) => {
+                        if (result.selectedIds && result.selectedIds.length > 0) {
                             const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
                             setMySchedule(prev => [...prev, ...newIds]);
                             setShowAIModal(false);
                             setAiPrompt('');
                             showNotification(result.message || `AI 已為您加入 ${newIds.length} 個行程！`);
+                        } else {
+                            showNotification("AI 找不到符合的行程，請嘗試更換描述。", "error");
                         }
+                    };
+
+                    try {
+                        const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, true);
+                        processResult(result);
                     } catch (searchError) {
                         // 捕捉錯誤：如果是搜尋引起的權限問題，自動降級
-                        console.warn("搜尋模式失敗，嘗試降級為內建知識庫模式...", searchError);
-                        
-                        // 顯示溫馨提示，而不是報錯
-                        showNotification("搜尋功能需綁定帳單，已自動切換至免費內建知識庫...", "success");
-                        
-                        // 降級重試：useSearch = false
-                        // 這裡也會自動走多模型切換邏輯
-                        const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, false);
-                        
-                        if (result.selectedIds) {
-                            const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
-                            setMySchedule(prev => [...prev, ...newIds]);
-                            setShowAIModal(false);
-                            setAiPrompt('');
-                            showNotification((result.message || `AI 已為您加入 ${newIds.length} 個行程！`) + " (內建知識庫)");
+                        if (searchError.isSearchError || searchError.message.includes("API Key 無效")) {
+                            console.warn("搜尋模式失敗，嘗試降級為內建知識庫模式...", searchError);
+                            showNotification("搜尋功能需綁定帳單，已自動切換至免費內建知識庫...", "success");
+                            
+                            // 降級重試：useSearch = false
+                            const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, false);
+                            processResult(result);
+                        } else {
+                            throw searchError;
                         }
                     }
                 } catch (err) {
@@ -1185,6 +1188,8 @@
                 </div>
 
                 <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
+                
+                {/* Modals */}
                 <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
                 <AccountModal 
                     isOpen={showAccount} 
@@ -1194,7 +1199,8 @@
                     onLogout={handleLogout} 
                 />
                 <DeleteConfirmModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={confirmDeleteHistory} />
-
+                
+                {/* ... existing header and main content ... */}
                 {/* --- Top Bar --- */}
                 <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5">
                     <div className="max-w-2xl mx-auto px-4 py-2 space-y-2">
