@@ -67,7 +67,7 @@
             Music, Filter, Sparkles, Zap, LayoutGrid, List, History, 
             Save, RotateCcw, Settings, Key, LogOut, Edit, Heart, Ticket, Mic2,
             AlertCircle, Check, AlertTriangle, FolderOpen, MessageSquare, ChevronDown, ArrowRight, Hourglass,
-            LogIn, User
+            LogIn, User, Info, Search
         } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { 
@@ -108,11 +108,14 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        // 修正：鎖定為環境唯一支援的 2.5 Preview 模型
-        const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
+        // 定義模型優先順序清單：確保 gemini-2.5-flash-preview-09-2025 為第一優先
+        const MODEL_SEQUENCE = [
+            "gemini-2.5-flash-preview-09-2025",
+            "gemini-2.5-flash-lite-preview-09-2025",
+            "gemini-3-flash-preview"
+        ];
 
-        // Helper: Call Gemini API
-        // 修改：新增 useSearch 參數，預設為 false
+        // Helper: Call Gemini API with Multi-Model Fallback
         const callGemini = async (prompt, imageBase64 = null, systemPrompt = "", userApiKey = "", useSearch = false) => {
             const apiKey = (userApiKey || "").trim(); 
 
@@ -120,61 +123,104 @@
                 throw new Error("請先在設定中輸入 Gemini API Key 才能使用 AI 功能");
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-
-            const contents = [
-                {
-                    parts: [
-                        { text: prompt },
-                        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
-                    ]
+            // 建立共用 Payload
+            const createPayload = () => {
+                const payload = {
+                    contents: [
+                        {
+                            parts: [
+                                { text: prompt },
+                                ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        responseMimeType: "application/json"
+                    },
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    }
+                };
+                // 如果開啟搜尋，加入 Google Search 工具
+                if (useSearch) {
+                    payload.tools = [{ google_search: {} }];
                 }
-            ];
-
-            const payload = {
-                contents,
-                generationConfig: {
-                    responseMimeType: "application/json"
-                },
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                }
+                return payload;
             };
 
-            // 新增：如果有啟用搜尋，則加入 Google Search 工具
-            if (useSearch) {
-                payload.tools = [{ google_search: {} }];
-            }
+            let lastError = null;
 
-            try {
-                const response = await fetch(url, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    const errorMessage = errorData.error?.message || response.statusText;
+            // 迴圈：依序嘗試模型清單
+            for (const model of MODEL_SEQUENCE) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
                     
-                    // 針對 429 速率限制給出明確提示
-                    if (response.status === 429) {
-                        throw new Error("使用量已達上限 (Rate Limit)。請等待約 30 秒後再試一次。");
+                    const response = await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(createPayload())
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const errorMessage = errorData.error?.message || response.statusText;
+                        
+                        // 建立錯誤物件並附加狀態碼
+                        const error = new Error(`API Error: ${response.status} ${errorMessage}`);
+                        error.status = response.status;
+                        error.originalMessage = errorMessage;
+                        
+                        // 標記是否為搜尋相關錯誤 (400 通常是 Search 工具權限問題)
+                        if (useSearch && (response.status === 400 || response.status === 403)) {
+                            error.isSearchError = true;
+                        }
+                        
+                        throw error;
                     }
-                    if (errorMessage.includes("API key not valid")) {
+
+                    const data = await response.json();
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!text) throw new Error("No content generated");
+                    
+                    // 成功！直接回傳結果
+                    return JSON.parse(text);
+
+                } catch (error) {
+                    lastError = error;
+                    
+                    // 錯誤處理策略：
+
+                    // 1. [搜尋權限錯誤]：如果是開啟搜尋時發生 400/403 或 Key 無效，
+                    // 這通常代表該 Key 沒有啟用搜尋的權限 (未綁卡)。
+                    // 我們不換模型，而是直接拋出錯誤，讓外層函式決定是否「關閉搜尋」重試。
+                    if (useSearch && (error.isSearchError || error.message.includes("API key not valid"))) {
+                        throw error; // 拋給 runAIRecommend 處理降級
+                    }
+
+                    // 2. [速率限制/忙碌]：如果是 429, 503, 404，嘗試下一個模型
+                    if (error.status === 429 || error.status === 503 || error.status === 404) {
+                        console.warn(`Model ${model} failed with status ${error.status}. Switching to next model...`);
+                        continue; 
+                    }
+
+                    // 3. [嚴重錯誤]：API Key 格式錯誤或無效 (非搜尋引起)，直接停止
+                    if (error.message.includes("API key not valid") || error.status === 400) {
                          throw new Error("API Key 無效。請檢查 Key 是否正確或已被刪除。");
                     }
-                    throw new Error(`API Error: ${response.status} ${errorMessage}`);
+
+                    // 4. 其他未知錯誤，拋出
+                    throw error;
                 }
-                const data = await response.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text) throw new Error("No content generated");
-                
-                return JSON.parse(text);
-            } catch (error) {
-                console.error("Gemini API Call Failed:", error);
-                throw error;
             }
+
+            // 如果迴圈跑完，所有模型都失敗
+            let finalMsg = "AI 服務暫時無法使用 (所有備用模型皆忙碌)。";
+            if (lastError?.status === 429) {
+                finalMsg = "系統流量已達上限，請稍後再試。";
+            } else if (lastError) {
+                finalMsg += ` 最後錯誤: ${lastError.message}`;
+            }
+            throw new Error(finalMsg);
         };
 
         // Helper: Convert file to Base64
@@ -202,6 +248,51 @@
                     <button onClick={onClose} className="ml-1 opacity-80 hover:opacity-100">
                         <X size={12} />
                     </button>
+                </div>
+            );
+        };
+
+        // New Component: Artist Info Modal
+        const ArtistInfoModal = ({ isOpen, onClose, data, loading }) => {
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-[#121212] w-full max-w-sm rounded-2xl border border-fuchsia-500/30 shadow-[0_0_50px_rgba(192,38,211,0.2)] relative overflow-hidden flex flex-col max-h-[80vh]">
+                        {/* Header */}
+                        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/[0.02]">
+                            <h3 className="text-lg font-black text-white flex items-center gap-2 italic truncate pr-2">
+                                <Search className="text-fuchsia-500" size={18} /> 
+                                {data.band || 'BAND INFO'}
+                            </h3>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-5 overflow-y-auto">
+                            {loading ? (
+                                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                                    <Loader2 className="text-fuchsia-500 animate-spin" size={32} />
+                                    <p className="text-xs text-gray-400 font-bold tracking-widest animate-pulse">SEARCHING WEB...</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="bg-fuchsia-900/10 border border-fuchsia-500/20 rounded-xl p-4">
+                                        <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
+                                            {data.content || "No information found."}
+                                        </p>
+                                    </div>
+                                    <div className="flex justify-end">
+                                        <span className="text-[9px] text-gray-500 flex items-center gap-1">
+                                            <Sparkles size={10} /> Powered by Gemini & Google Search
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             );
         };
@@ -952,19 +1043,38 @@
                     You are a festival guide. User gives preferences.
                     You have access to: ${JSON.stringify(performances.map(p => ({ id: p.id, band: p.band, style: "unknown" })))}.
                     Select matching performance IDs based on user's taste.
-                    **IMPORTANT: Use Google Search to verify the genre/style of the bands if you are unsure.**
                     Return JSON: { "selectedIds": [string], "message": string (Traditional Chinese comment) }
                 `;
 
                 try {
-                    // 修改：啟用 Google 搜尋功能 (最後一個參數設為 true)
-                    const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, true);
-                    if (result.selectedIds) {
-                        const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
-                        setMySchedule(prev => [...prev, ...newIds]);
-                        setShowAIModal(false);
-                        setAiPrompt('');
-                        showNotification(result.message || `AI 已為您加入 ${newIds.length} 個行程！`);
+                    // 自動降級機制：先嘗試用 Search (true)
+                    try {
+                        const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, true);
+                        if (result.selectedIds) {
+                            const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
+                            setMySchedule(prev => [...prev, ...newIds]);
+                            setShowAIModal(false);
+                            setAiPrompt('');
+                            showNotification(result.message || `AI 已為您加入 ${newIds.length} 個行程！`);
+                        }
+                    } catch (searchError) {
+                        // 捕捉錯誤：如果是搜尋引起的權限問題，自動降級
+                        console.warn("搜尋模式失敗，嘗試降級為內建知識庫模式...", searchError);
+                        
+                        // 顯示溫馨提示，而不是報錯
+                        showNotification("搜尋功能需綁定帳單，已自動切換至免費內建知識庫...", "success");
+                        
+                        // 降級重試：useSearch = false
+                        // 這裡也會自動走多模型切換邏輯
+                        const result = await callGemini(`User Preference: "${aiPrompt}"`, null, systemInstruction, apiKey, false);
+                        
+                        if (result.selectedIds) {
+                            const newIds = result.selectedIds.filter(id => !mySchedule.includes(id));
+                            setMySchedule(prev => [...prev, ...newIds]);
+                            setShowAIModal(false);
+                            setAiPrompt('');
+                            showNotification((result.message || `AI 已為您加入 ${newIds.length} 個行程！`) + " (內建知識庫)");
+                        }
                     }
                 } catch (err) {
                     setAiError(`AI 錯誤: ${err.message}`);
