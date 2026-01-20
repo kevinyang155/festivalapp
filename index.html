@@ -92,7 +92,7 @@
             Music, Filter, Sparkles, Zap, LayoutGrid, List, History, 
             Save, RotateCcw, Settings, Key, LogOut, Edit, Heart, Ticket, Mic2,
             AlertCircle, Check, AlertTriangle, FolderOpen, MessageSquare, ChevronDown, ArrowRight, Hourglass,
-            LogIn, User, Info, Search, ThumbsUp
+            LogIn, User, Info, Search, ThumbsUp, WifiOff
         } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { 
@@ -133,7 +133,6 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
-        // 定義模型優先順序清單：確保 gemini-2.5-flash-preview-09-2025 為第一優先
         const MODEL_SEQUENCE = [
             "gemini-2.5-flash-preview-09-2025",
             "gemini-2.5-flash-lite-preview-09-2025",
@@ -796,6 +795,8 @@
 
         // --- Main App ---
 
+        const CACHE_KEY = 'festival_draft_cache';
+
         const App = () => {
             // Auth & User State
             const [user, setUser] = useState(null);
@@ -840,6 +841,48 @@
             // Recommendation Review Modal State
             const [recResult, setRecResult] = useState(null);
             const [showRecReview, setShowRecReview] = useState(false);
+
+            // --- [新增] Offline Cache Logic ---
+            // 1. 載入：當 App 啟動時，檢查有沒有快取
+            useEffect(() => {
+                const cachedData = localStorage.getItem(CACHE_KEY);
+                if (cachedData) {
+                    try {
+                        const parsed = JSON.parse(cachedData);
+                        setFestivalName(parsed.festivalName || '');
+                        setEventType(parsed.eventType || 'festival');
+                        setStartDate(parsed.startDate || '');
+                        setEndDate(parsed.endDate || '');
+                        setPerformances(parsed.performances || []);
+                        setMySchedule(parsed.mySchedule || []);
+                        setDays(parsed.days || ['Day 1']);
+                        // 不要還原 view，讓使用者從 manage 開始比較合理，或者預設 manage
+                        console.log("從本機快取還原資料成功");
+                    } catch (e) {
+                        console.error("快取讀取失敗", e);
+                    }
+                }
+            }, []);
+
+            // 2. 儲存：當任何關鍵資料改變時，儲存到快取
+            useEffect(() => {
+                // 只有當真的有資料時才儲存，避免蓋掉剛載入的空狀態
+                // 但也需要考慮使用者真的清空了所有資料。
+                // 簡單判斷：只要不是初始化狀態就可以存。
+                
+                const dataToCache = {
+                    festivalName,
+                    eventType,
+                    startDate,
+                    endDate,
+                    performances,
+                    mySchedule,
+                    days,
+                    savedAt: new Date().toISOString()
+                };
+                localStorage.setItem(CACHE_KEY, JSON.stringify(dataToCache));
+            }, [festivalName, eventType, startDate, endDate, performances, mySchedule, days]);
+
 
             // --- Auth Init ---
             useEffect(() => {
@@ -1017,6 +1060,10 @@
                 setDays(['Day 1']);
                 setActiveDay('Day 1');
                 setView('manage');
+                
+                // [新增] 清除快取
+                localStorage.removeItem(CACHE_KEY);
+
                 if (showConfirm) showNotification('已重置');
             };
 
@@ -1071,6 +1118,7 @@
                 setActiveDay('Day 1');
                 setView('program'); 
                 showNotification(`已載入 "${entry.name}"`);
+                // Note: The caching useEffect will automatically trigger and save this new state to local storage
             };
 
             // Fixed Delete Handler using State
@@ -1348,13 +1396,21 @@
             }, [mySchedule, performances]);
 
             // --- Auth Loading Screen ---
-            if (authLoading) {
+            // [修正] 如果 auth 在載入中，但我們已經有 local cache，直接顯示 App
+            // 這樣在離線或網路慢時，用戶可以立刻看到上次的內容，而不用等 Auth timeout
+            if (authLoading && !localStorage.getItem(CACHE_KEY)) {
                 return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="text-fuchsia-500 animate-spin" size={32} /></div>;
             }
 
-            // --- LOGIN PAGE (Render if no user) ---
-            if (!user) {
-                return <LoginPage onLogin={handleGoogleLogin} onGuestLogin={handleGuestLogin} error={loginError} />;
+            // --- LOGIN PAGE (Render if no user AND no local cache) ---
+            // 如果沒登入，但也沒快取，才顯示登入頁
+            // 如果有快取，我們允許先進入瀏覽 (類似 Guest，但其實是用戶上次的狀態)
+            // 可是為了確保邏輯簡單，我們還是維持登入牆，但 Auth 本身有 Persistence
+            // Firebase Auth 預設會存 IndexedDB，所以離線時通常也會認定為已登入 (user != null)
+            // 只有在真的完全沒登入過的情況下，才需要聯網登入。
+            
+            if (!user && !authLoading) { 
+                 return <LoginPage onLogin={handleGoogleLogin} onGuestLogin={handleGuestLogin} error={loginError} />;
             }
 
             // --- MAIN APP (Render if user logged in) ---
@@ -1628,7 +1684,7 @@
                                                         <div className="flex justify-between items-start mb-1">
                                                             <span className="font-bold text-white text-sm leading-tight">
                                                                 {p.band}
-                                                                {/* 新增：如果在行程中且有衝突，顯示警告圖示 */}
+                                                                {/* 衝突警告邏輯 */}
                                                                 {mySchedule.includes(p.id) && conflicts.has(p.id) && (
                                                                     <AlertTriangle size={12} className="text-yellow-500 animate-pulse inline-block ml-1.5 align-middle" />
                                                                 )}
