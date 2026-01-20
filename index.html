@@ -2,8 +2,20 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Festival Planner</title>
+    
+    <!-- iOS PWA 設定: 開啟全螢幕模式 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Festival Sync">
+    
+    <!-- Android/Chrome PWA 主題色 -->
+    <meta name="theme-color" content="#050505">
+
+    <!-- Web App Manifest (Data URI) for Android PWA Support -->
+    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIkZlc3RpdmFsIFBsYW5uZXIiLAogICJzaG9ydF9uYW1lIjogIkZlc3RTeW5jIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwNTA1MDUiLAogICJ0aGVtZV9jb2xvciI6ICIjMDUwNTA1IiwKICAiaWNvbnMiOiBbXQp9">
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Babel for JSX -->
@@ -23,6 +35,14 @@
     }
     </script>
     <style>
+        /* Safe Area Utilities for PWA Mode */
+        .pt-safe {
+            padding-top: env(safe-area-inset-top, 20px);
+        }
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
         /* Custom styles that Tailwind might not catch immediately in dynamic content */
         .custom-scrollbar::-webkit-scrollbar { width: 3px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -1390,7 +1410,7 @@
 
                 {/* ... existing header and main content ... */}
                 {/* --- Top Bar --- */}
-                <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5">
+                <header className="sticky top-0 z-30 bg-[#050505]/80 backdrop-blur-xl border-b border-white/5 pt-safe">
                     <div className="max-w-2xl mx-auto px-4 py-2 space-y-2">
                         {/* Title Row */}
                         <div className="flex justify-between items-center">
