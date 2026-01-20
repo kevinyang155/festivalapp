@@ -1626,8 +1626,14 @@
                                                         }`}
                                                     >
                                                         <div className="flex justify-between items-start mb-1">
-                                                            <span className="font-bold text-white text-sm leading-tight">{p.band}</span>
-                                                            {mySchedule.includes(p.id) && <Heart size={12} className="fill-fuchsia-500 text-fuchsia-500" />}
+                                                            <span className="font-bold text-white text-sm leading-tight">
+                                                                {p.band}
+                                                                {/* 新增：如果在行程中且有衝突，顯示警告圖示 */}
+                                                                {mySchedule.includes(p.id) && conflicts.has(p.id) && (
+                                                                    <AlertTriangle size={12} className="text-yellow-500 animate-pulse inline-block ml-1.5 align-middle" />
+                                                                )}
+                                                            </span>
+                                                            {mySchedule.includes(p.id) && <Heart size={12} className="fill-fuchsia-500 text-fuchsia-500 shrink-0 ml-1" />}
                                                         </div>
                                                         <div className="text-[10px] text-gray-400 font-mono font-bold">{p.startTime} - {p.endTime}</div>
                                                     </div>
