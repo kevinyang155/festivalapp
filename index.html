@@ -634,38 +634,76 @@
             }, [mySchedule, performances]);
 
             const generateICS = (trip) => {
-                if (!trip.performances || !trip.mySchedule || trip.mySchedule.length === 0) {
-                    showNotification("NO GIGS SELECTED", "error");
-                    return;
-                }
                 if (!trip.startDate) {
                     showNotification("MISSING START DATE", "error");
                     return;
                 }
 
-                let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Music Sync//Live v1.0//EN\n";
-                const selectedGigs = trip.performances.filter(p => trip.mySchedule.includes(p.id));
+                // METHOD:PUBLISH for basic calendar events
+                let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Music Sync//Live v1.0//EN\nMETHOD:PUBLISH\n";
                 
-                selectedGigs.forEach(gig => {
-                    // Try to parse day offset (e.g., "Day 1" -> 0, "Day 2" -> 1)
-                    const dayMatch = gig.day.match(/Day (\d+)/);
-                    const dayOffset = dayMatch ? parseInt(dayMatch[1]) - 1 : 0;
-                    
-                    const baseDate = new Date(trip.startDate);
-                    baseDate.setDate(baseDate.getDate() + dayOffset);
-                    
-                    const dateStr = baseDate.toISOString().split('T')[0].replace(/-/g, '');
-                    const startTimeStr = gig.startTime.replace(':', '') + '00';
-                    const endTimeStr = gig.endTime.replace(':', '') + '00';
-                    
+                // Determine what to export: Specific gigs or the whole event date
+                const selectedGigs = (trip.performances && trip.mySchedule) 
+                    ? trip.performances.filter(p => trip.mySchedule.includes(p.id)) 
+                    : [];
+                
+                // Common timestamp for versioning
+                const now = new Date();
+                const dtStamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+                if (selectedGigs.length > 0) {
+                    // Scenario A: Export selected gigs
+                    selectedGigs.forEach(gig => {
+                        // Try to parse day offset (e.g., "Day 1" -> 0, "Day 2" -> 1)
+                        const dayMatch = gig.day.match(/Day (\d+)/);
+                        const dayOffset = dayMatch ? parseInt(dayMatch[1]) - 1 : 0;
+                        
+                        const baseDate = new Date(trip.startDate);
+                        baseDate.setDate(baseDate.getDate() + dayOffset);
+                        
+                        const dateStr = baseDate.toISOString().split('T')[0].replace(/-/g, '');
+                        const startTimeStr = gig.startTime.replace(':', '') + '00';
+                        const endTimeStr = gig.endTime.replace(':', '') + '00';
+                        
+                        icsContent += "BEGIN:VEVENT\n";
+                        icsContent += `UID:${gig.id}@musicsync.live\n`;
+                        icsContent += `DTSTAMP:${dtStamp}\n`;
+                        icsContent += `SUMMARY:${gig.band} @ ${gig.stage}\n`;
+                        icsContent += `DTSTART:${dateStr}T${startTimeStr}\n`;
+                        icsContent += `DTEND:${dateStr}T${endTimeStr}\n`;
+                        icsContent += `LOCATION:${gig.stage}\n`;
+                        icsContent += `DESCRIPTION:${trip.name || 'Festival'} - ${gig.band}\n`;
+                        icsContent += "END:VEVENT\n";
+                    });
+                    showNotification("ICS EXPORTED (GIGS)");
+                } else {
+                    // Scenario B: Export Main Event Date Range (All Day Event)
+                    const startObj = new Date(trip.startDate);
+                    const startStr = startObj.toISOString().split('T')[0].replace(/-/g, '');
+
+                    // Calculate End (Exclusive for All Day events in ICS)
+                    // If endDate is valid and after startDate, use it. Otherwise assume 1 day duration.
+                    let endObj = new Date(trip.startDate);
+                    if (trip.endDate && new Date(trip.endDate) >= startObj) {
+                        endObj = new Date(trip.endDate);
+                    }
+                    // Add 1 day for exclusive end date
+                    endObj.setDate(endObj.getDate() + 1);
+                    const endStr = endObj.toISOString().split('T')[0].replace(/-/g, '');
+
                     icsContent += "BEGIN:VEVENT\n";
-                    icsContent += `SUMMARY:${gig.band} @ ${gig.stage}\n`;
-                    icsContent += `DTSTART:${dateStr}T${startTimeStr}\n`;
-                    icsContent += `DTEND:${dateStr}T${endTimeStr}\n`;
-                    icsContent += `LOCATION:${gig.stage}\n`;
-                    icsContent += `DESCRIPTION:${trip.name || 'Festival'} - ${gig.band}\n`;
+                    // Using a unique ID based on start date so it can be updated if downloaded again
+                    icsContent += `UID:full_event_${trip.startDate}@musicsync.live\n`;
+                    icsContent += `DTSTAMP:${dtStamp}\n`;
+                    icsContent += `SUMMARY:${trip.name || 'Music Event'}\n`;
+                    // VALUE=DATE indicates all-day event
+                    icsContent += `DTSTART;VALUE=DATE:${startStr}\n`;
+                    icsContent += `DTEND;VALUE=DATE:${endStr}\n`;
+                    icsContent += `DESCRIPTION:Event dates for ${trip.name}\n`;
                     icsContent += "END:VEVENT\n";
-                });
+                    
+                    showNotification("ICS EXPORTED (DATES ONLY)");
+                }
 
                 icsContent += "END:VCALENDAR";
 
@@ -676,7 +714,6 @@
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
-                showNotification("ICS EXPORTED");
             };
 
             if (authLoading && !localStorage.getItem(CACHE_KEY)) return <div className="min-h-screen bg-[#1c1917] flex items-center justify-center"><Loader2 className="text-orange-500 animate-spin" size={32} /></div>;
