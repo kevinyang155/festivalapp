@@ -133,10 +133,11 @@
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'festival-planner-v1';
 
         // --- Gemini API Configuration ---
+        // 定義模型優先順序清單：已更新為 3.0 Flash 優先，2.5 Flash 為備用
         const MODEL_SEQUENCE = [
+            "gemini-3-flash-preview",
             "gemini-2.5-flash-preview-09-2025",
-            "gemini-2.5-flash-lite-preview-09-2025",
-            "gemini-3-flash-preview"
+            "gemini-2.5-flash-lite-preview-09-2025"
         ];
 
         // Helper: Call Gemini API with Multi-Model Fallback
