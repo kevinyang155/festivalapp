@@ -3,21 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Festival Planner - 爛泥風格</title>
+    <title>Festival Planner - 真・大港風格</title>
     
     <!-- iOS PWA 設定 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Festival Sync">
     
-    <!-- Android/Chrome PWA 主題色 (改為深岩石色) -->
-    <meta name="theme-color" content="#1c1917">
+    <!-- Android/Chrome PWA 主題色 -->
+    <meta name="theme-color" content="#020617">
 
     <!-- Web App Manifest (Data URI) -->
-    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIkZlc3RpdmFsIFBsYW5uZXIiLAogICJzaG9ydF9uYW1lIjogIkZlc3RTeW5jIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMxYzE5MTciLAogICJ0aGVtZV9jb2xvciI6ICIjMWMxOTE3IiwKICAiaWNvbnMiOiBbXQp9">
+    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIkZlc3RpdmFsIFBsYW5uZXIiLAogICJzaG9ydF9uYW1lIjogIkZlc3RTeW5jIiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwMjA2MTciLAogICJ0aGVtZV9jb2xvciI6ICIjMDIwNjE3IiwKICAiaWNvbnMiOiBbXQp9">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        megaport: {
+                            orange: '#FF4D00', // 更兇的橘紅
+                            cyan: '#00E5FF',   // 霓虹青
+                            dark: '#0B1120',   // 深海黑
+                            yellow: '#FBbf24'  // 警示黃
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
@@ -40,10 +56,10 @@
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
         .top-safe-offset { top: calc(env(safe-area-inset-top, 20px) + 12px); }
 
-        /* Custom Scrollbar (更粗獷一點) */
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #292524; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #ea580c; border-radius: 0px; } /* Orange thumb, square corners */
+        /* Custom Scrollbar (硬派方塊) */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; border-left: 1px solid #334155; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #FF4D00; border-radius: 0px; } 
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
@@ -52,7 +68,7 @@
             from { transform: translate(-50%, -100%); opacity: 0; }
             to { transform: translate(-50%, 0); opacity: 1; }
         }
-        .animate-slideDown { animation: slideDown 0.3s ease-out forwards; }
+        .animate-slideDown { animation: slideDown 0.2s cubic-bezier(0, 0, 0.2, 1) forwards; }
         
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -64,17 +80,50 @@
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fadeInUp { animation: fadeInUp 0.5s ease-out forwards; }
+        .animate-fadeInUp { animation: fadeInUp 0.3s ease-out forwards; }
         
-        /* 爛泥風格雜訊背景 (模擬) */
-        .bg-grunge {
-            background-color: #1c1917;
-            background-image: radial-gradient(#292524 1px, transparent 1px);
-            background-size: 20px 20px;
+        /* 大港風格：警示條紋 */
+        .bg-hazard-stripe {
+            background-image: repeating-linear-gradient(
+                45deg,
+                #FBbf24,
+                #FBbf24 10px,
+                #000000 10px,
+                #000000 20px
+            );
+        }
+
+        /* 雜訊背景 */
+        .bg-noise {
+            background-color: #0B1120;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+        }
+
+        /* 硬派陰影 Brutalist Shadow */
+        .shadow-hard {
+            box-shadow: 4px 4px 0px 0px #000000;
+        }
+        .shadow-hard-sm {
+            box-shadow: 2px 2px 0px 0px #000000;
+        }
+        .shadow-hard-white {
+            box-shadow: 4px 4px 0px 0px #ffffff;
+        }
+        .shadow-hard-orange {
+            box-shadow: 4px 4px 0px 0px #FF4D00;
+        }
+        .shadow-hard-cyan {
+            box-shadow: 4px 4px 0px 0px #00E5FF;
+        }
+
+        /* 按鈕點擊效果 */
+        .active-press:active {
+            transform: translate(2px, 2px);
+            box-shadow: 0px 0px 0px 0px #000000;
         }
     </style>
 </head>
-<body class="bg-[#1c1917] bg-grunge text-stone-200">
+<body class="bg-megaport-dark bg-noise text-slate-100 font-sans tracking-tight">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
@@ -85,7 +134,7 @@
             Music, Filter, Sparkles, Zap, LayoutGrid, List, History, 
             Save, RotateCcw, Settings, Key, LogOut, Edit, Heart, Ticket, Mic2,
             AlertCircle, Check, AlertTriangle, FolderOpen, MessageSquare, ChevronDown, ArrowRight, Hourglass,
-            LogIn, User, Info, Search, ThumbsUp, WifiOff, Sprout, CalendarPlus
+            LogIn, User, Info, Search, ThumbsUp, WifiOff, Anchor, CalendarPlus
         } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { 
@@ -194,50 +243,54 @@
             reader.onerror = reject;
         });
 
-        // --- Styled Components ---
+        // --- Styled Components (Brutalist / Megaport) ---
 
         const Notification = ({ message, type, onClose }) => {
             if (!message) return null;
-            const bgColor = type === 'success' ? 'bg-lime-600' : 'bg-red-600';
-            const icon = type === 'success' ? <Check size={14} className="text-black" /> : <AlertTriangle size={14} className="text-white" />;
+            const bgColor = type === 'success' ? 'bg-megaport-cyan text-black' : 'bg-red-600 text-white';
+            const icon = type === 'success' ? <Check size={16} strokeWidth={3} /> : <AlertTriangle size={16} strokeWidth={3} />;
 
             return (
-                <div className={`fixed top-safe-offset left-1/2 transform -translate-x-1/2 z-[100] px-4 py-2 shadow-lg flex items-center gap-2 text-white font-mono font-bold animate-slideDown border-2 border-black ${bgColor}`}>
+                <div className={`fixed top-safe-offset left-1/2 transform -translate-x-1/2 z-[100] px-6 py-3 shadow-hard flex items-center gap-3 font-black text-sm animate-slideDown border-2 border-black ${bgColor} uppercase tracking-wider`}>
                     {icon}
-                    <span className="text-xs tracking-wider whitespace-nowrap uppercase">{message}</span>
-                    <button onClick={onClose} className="ml-2 hover:text-black transition-colors">
-                        <X size={14} strokeWidth={3} />
+                    <span>{message}</span>
+                    <button onClick={onClose} className="ml-2 hover:scale-110 transition-transform">
+                        <X size={16} strokeWidth={4} />
                     </button>
                 </div>
             );
         };
 
         const LoginPage = ({ onLogin, onGuestLogin, error }) => (
-            <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#1c1917]">
-                <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-orange-900/20 blur-[100px] rounded-full z-0"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-lime-900/10 blur-[100px] rounded-full z-0"></div>
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-megaport-dark">
+                {/* 警示條紋背景裝飾 */}
+                <div className="absolute top-0 left-0 w-full h-4 bg-hazard-stripe opacity-80"></div>
+                <div className="absolute bottom-0 right-0 w-full h-4 bg-hazard-stripe opacity-80"></div>
+                <div className="absolute top-1/2 left-0 w-full h-[600px] -translate-y-1/2 bg-megaport-orange/5 -skew-y-12 z-0"></div>
 
-                <div className="relative z-10 w-full max-w-md bg-[#292524] border-2 border-stone-700 p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.5)] animate-fadeInUp">
-                    <div className="text-center mb-10">
-                        <div className="inline-flex p-4 bg-orange-600 text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(255,255,255,0.1)] mb-4">
-                            <Sprout size={40} strokeWidth={2.5} />
+                <div className="relative z-10 w-full max-w-sm bg-slate-900 border-2 border-white p-8 shadow-hard-white animate-fadeInUp">
+                    <div className="text-center mb-12">
+                        <div className="inline-flex p-6 bg-megaport-orange border-2 border-black shadow-hard mb-6 rotate-3">
+                            <Anchor size={48} strokeWidth={3} className="text-black" />
                         </div>
-                        <h1 className="text-4xl font-black text-white italic tracking-tighter mb-2 font-mono">MUSIC.SYNC</h1>
-                        <p className="text-stone-500 text-xs font-bold tracking-[0.3em] uppercase">Muddy Roots / Raw Energy</p>
+                        <h1 className="text-5xl font-black text-white italic tracking-tighter mb-2 uppercase leading-none" style={{textShadow: "4px 4px 0px #000"}}>
+                            MUSIC<span className="text-megaport-cyan">.</span>SYNC
+                        </h1>
+                        <p className="text-megaport-cyan text-sm font-bold tracking-[0.4em] uppercase bg-black inline-block px-2 py-1 transform -skew-x-12">Live / Raw / Loud</p>
                     </div>
 
                     <div className="space-y-4">
-                        <button onClick={onLogin} className="w-full py-4 px-4 bg-stone-100 text-black font-black text-sm uppercase tracking-wider border-2 border-transparent hover:border-orange-500 hover:text-orange-600 flex items-center justify-center gap-3 transition-all active:translate-y-1">
+                        <button onClick={onLogin} className="w-full py-4 px-4 bg-white text-black font-black text-sm uppercase tracking-widest border-2 border-black shadow-hard hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all flex items-center justify-center gap-3">
                             Sign in with Google
                         </button>
-                        <button onClick={onGuestLogin} className="w-full py-4 px-4 bg-transparent text-stone-400 font-bold text-sm uppercase tracking-wider border-2 border-stone-600 hover:border-lime-500 hover:text-lime-500 flex items-center justify-center gap-3 transition-all active:translate-y-1">
+                        <button onClick={onGuestLogin} className="w-full py-4 px-4 bg-transparent text-white font-black text-sm uppercase tracking-widest border-2 border-white hover:bg-white hover:text-black transition-all flex items-center justify-center gap-3">
                             Continue as Guest
                         </button>
                     </div>
 
                     {error && (
-                        <div className="mt-6 p-3 bg-red-900/30 border-l-4 border-red-600 text-red-200 text-xs font-bold font-mono animate-fadeIn flex gap-2">
-                            <AlertCircle size={14} /> {error}
+                        <div className="mt-8 p-4 bg-red-600 text-white text-xs font-bold border-2 border-black shadow-hard flex gap-2 uppercase tracking-wide">
+                            <AlertCircle size={16} strokeWidth={3} /> {error}
                         </div>
                     )}
                 </div>
@@ -262,39 +315,39 @@
             };
 
             const containerClasses = isInline 
-                ? "mt-2 p-4 bg-stone-800 border-2 border-orange-600/50 animate-fadeIn"
-                : "fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn";
+                ? "mt-3 p-4 bg-slate-800 border-2 border-megaport-orange shadow-hard-orange animate-fadeIn"
+                : "fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn";
             
-            const contentClasses = isInline ? "" : "bg-[#292524] w-full max-w-sm border-2 border-stone-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 relative";
+            const contentClasses = isInline ? "" : "bg-slate-900 w-full max-w-sm border-2 border-white shadow-hard-white p-6 relative";
 
             return (
                 <div className={containerClasses}>
                     <div className={contentClasses}>
                         {!isInline && (
-                            <div className="flex justify-between items-center mb-6 border-b-2 border-stone-700 pb-2">
-                                <h3 className="text-white font-black italic text-xl uppercase font-mono tracking-wide">
+                            <div className="flex justify-between items-center mb-6 border-b-2 border-white pb-3">
+                                <h3 className="text-white font-black italic text-2xl uppercase tracking-tighter">
                                     {editingItem ? 'EDIT GIG' : 'NEW GIG'}
                                 </h3>
-                                <button onClick={onCancel} className="text-stone-500 hover:text-orange-500 transition-colors">
-                                    <X size={24} strokeWidth={3} />
+                                <button onClick={onCancel} className="text-white hover:text-megaport-orange transition-colors">
+                                    <X size={28} strokeWidth={4} />
                                 </button>
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit} className="space-y-4">
+                        <form onSubmit={handleSubmit} className="space-y-5">
                             <div>
-                                <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-1 block">Band Name</label>
-                                <input value={formData.band} onChange={e => setFormData({...formData, band: e.target.value})} className="w-full bg-black/40 border-2 border-stone-700 px-3 py-3 text-white text-sm focus:border-orange-500 focus:bg-black outline-none font-bold placeholder-stone-700 transition-colors" placeholder="BAND NAME" autoFocus />
+                                <label className="text-[10px] font-black text-megaport-cyan uppercase tracking-widest mb-1 block">Band Name</label>
+                                <input value={formData.band} onChange={e => setFormData({...formData, band: e.target.value})} className="w-full bg-black border-2 border-slate-600 px-3 py-3 text-white text-base focus:border-megaport-orange focus:shadow-[4px_4px_0px_0px_#FF4D00] outline-none font-bold placeholder-slate-600 transition-all uppercase" placeholder="BAND NAME" autoFocus />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-1 block">Stage</label>
-                                    <input value={formData.stage} onChange={e => setFormData({...formData, stage: e.target.value})} className="w-full bg-black/40 border-2 border-stone-700 px-3 py-3 text-white text-sm focus:border-orange-500 focus:bg-black outline-none font-bold placeholder-stone-700" placeholder="STAGE" />
+                                    <label className="text-[10px] font-black text-megaport-cyan uppercase tracking-widest mb-1 block">Stage</label>
+                                    <input value={formData.stage} onChange={e => setFormData({...formData, stage: e.target.value})} className="w-full bg-black border-2 border-slate-600 px-3 py-3 text-white text-sm focus:border-megaport-orange outline-none font-bold placeholder-slate-600 uppercase" placeholder="STAGE" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-1 block">Day</label>
-                                    <select value={formData.day} onChange={e => setFormData({...formData, day: e.target.value})} className="w-full bg-black/40 border-2 border-stone-700 px-3 py-3 text-white text-sm focus:border-orange-500 outline-none appearance-none font-bold">
+                                    <label className="text-[10px] font-black text-megaport-cyan uppercase tracking-widest mb-1 block">Day</label>
+                                    <select value={formData.day} onChange={e => setFormData({...formData, day: e.target.value})} className="w-full bg-black border-2 border-slate-600 px-3 py-3 text-white text-sm focus:border-megaport-orange outline-none appearance-none font-bold uppercase rounded-none">
                                         {days.map(d => <option key={d} value={d}>{d}</option>)}
                                     </select>
                                 </div>
@@ -302,23 +355,23 @@
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-1 block">Start</label>
-                                    <input type="time" value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="w-full bg-black/40 border-2 border-stone-700 px-3 py-3 text-white text-sm focus:border-orange-500 outline-none font-bold font-mono" />
+                                    <label className="text-[10px] font-black text-megaport-cyan uppercase tracking-widest mb-1 block">Start</label>
+                                    <input type="time" value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="w-full bg-black border-2 border-slate-600 px-3 py-3 text-white text-sm focus:border-megaport-orange outline-none font-bold font-mono rounded-none" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-1 block">End</label>
-                                    <input type="time" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="w-full bg-black/40 border-2 border-stone-700 px-3 py-3 text-white text-sm focus:border-orange-500 outline-none font-bold font-mono" />
+                                    <label className="text-[10px] font-black text-megaport-cyan uppercase tracking-widest mb-1 block">End</label>
+                                    <input type="time" value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="w-full bg-black border-2 border-slate-600 px-3 py-3 text-white text-sm focus:border-megaport-orange outline-none font-bold font-mono rounded-none" />
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 pt-4">
+                            <div className="flex gap-4 pt-4">
                                 {editingItem && (
-                                    <button type="button" onClick={() => onDelete(editingItem.id)} className="px-4 py-3 bg-red-900/20 text-red-500 text-xs font-black border-2 border-red-900 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all uppercase">
+                                    <button type="button" onClick={() => onDelete(editingItem.id)} className="px-4 py-3 bg-black text-red-500 text-xs font-black border-2 border-red-600 hover:bg-red-600 hover:text-white shadow-hard-sm active-press transition-all uppercase">
                                         Delete
                                     </button>
                                 )}
-                                <button type="submit" className="flex-1 py-3 bg-stone-200 text-black text-xs font-black hover:bg-orange-500 hover:text-white transition-all uppercase border-2 border-transparent hover:border-black flex items-center justify-center gap-2">
-                                    <Save size={14} /> {editingItem ? 'UPDATE' : 'SAVE GIG'}
+                                <button type="submit" className="flex-1 py-3 bg-white text-black text-sm font-black hover:bg-megaport-orange hover:border-black shadow-hard active-press transition-all uppercase border-2 border-black flex items-center justify-center gap-2">
+                                    <Save size={16} strokeWidth={3} /> {editingItem ? 'UPDATE' : 'SAVE GIG'}
                                 </button>
                             </div>
                         </form>
@@ -335,20 +388,20 @@
             const toggleSelection = (id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]);
 
             return (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-fadeIn">
-                    <div className="bg-[#292524] w-full max-w-sm border-2 border-lime-600 shadow-[8px_8px_0px_0px_rgba(132,204,22,0.2)] flex flex-col max-h-[85vh] overflow-hidden relative">
-                        <div className="p-4 border-b-2 border-stone-700 flex justify-between items-center bg-stone-900">
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-slate-900 w-full max-w-sm border-2 border-megaport-cyan shadow-hard-cyan flex flex-col max-h-[85vh] overflow-hidden relative">
+                        <div className="p-4 border-b-2 border-slate-700 flex justify-between items-center bg-black">
                             <div>
-                                <h3 className="text-base font-black text-lime-400 flex items-center gap-2 italic font-mono uppercase">
-                                    <Sparkles size={16} /> AI SCOUT
+                                <h3 className="text-lg font-black text-megaport-cyan flex items-center gap-2 italic uppercase tracking-tighter">
+                                    <Sparkles size={18} strokeWidth={3} /> AI SCOUT
                                 </h3>
-                                <p className="text-[10px] text-stone-500 mt-0.5 font-bold">FOUND {recResult.recommendations.length} MATCHES</p>
+                                <p className="text-[10px] text-white font-bold bg-slate-800 px-2 py-0.5 inline-block mt-1 transform -skew-x-12">FOUND {recResult.recommendations.length} MATCHES</p>
                             </div>
-                            <button onClick={onClose} className="text-stone-500 hover:text-white"><X size={20} strokeWidth={3} /></button>
+                            <button onClick={onClose} className="text-white hover:text-megaport-cyan transition-colors"><X size={24} strokeWidth={4} /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-[#1c1917]">
-                            <div className="bg-stone-800 border-l-4 border-lime-500 p-3">
-                                <p className="text-xs text-stone-300 leading-relaxed italic">"{recResult.summary}"</p>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-megaport-dark">
+                            <div className="bg-slate-800 border-l-4 border-megaport-cyan p-4 shadow-md">
+                                <p className="text-xs text-slate-200 leading-relaxed font-bold">"{recResult.summary}"</p>
                             </div>
                             <div className="space-y-3">
                                 {recResult.recommendations.map((rec) => {
@@ -356,18 +409,18 @@
                                     if (!perf) return null;
                                     const isSelected = selectedIds.includes(rec.id);
                                     return (
-                                        <div key={rec.id} onClick={() => toggleSelection(rec.id)} className={`p-3 border-2 transition-all cursor-pointer flex gap-3 items-start group ${isSelected ? 'bg-stone-800 border-lime-500' : 'bg-transparent border-stone-800 opacity-60 hover:opacity-100 hover:border-stone-600'}`}>
-                                            <div className={`mt-1 w-5 h-5 flex items-center justify-center shrink-0 border-2 ${isSelected ? 'bg-lime-500 border-lime-500 text-black' : 'border-stone-600'}`}>
-                                                {isSelected && <Check size={14} strokeWidth={4} />}
+                                        <div key={rec.id} onClick={() => toggleSelection(rec.id)} className={`p-3 border-2 transition-all cursor-pointer flex gap-3 items-start group ${isSelected ? 'bg-slate-800 border-megaport-cyan shadow-[4px_4px_0px_0px_#00E5FF]' : 'bg-black border-slate-700 opacity-70 hover:opacity-100 hover:border-white'}`}>
+                                            <div className={`mt-1 w-6 h-6 flex items-center justify-center shrink-0 border-2 ${isSelected ? 'bg-megaport-cyan border-megaport-cyan text-black' : 'border-slate-600 bg-transparent'}`}>
+                                                {isSelected && <Check size={16} strokeWidth={4} />}
                                             </div>
                                             <div className="flex-1">
                                                 <div className="flex justify-between items-start">
-                                                    <h4 className={`font-black text-sm uppercase ${isSelected ? 'text-white' : 'text-stone-500'}`}>{perf.band}</h4>
-                                                    <span className="text-[9px] font-mono font-bold text-stone-600 bg-black px-1 py-0.5">{perf.day}</span>
+                                                    <h4 className={`font-black text-sm uppercase ${isSelected ? 'text-white' : 'text-slate-400'}`}>{perf.band}</h4>
+                                                    <span className="text-[10px] font-mono font-bold text-black bg-white px-1.5 py-0.5 border border-black">{perf.day}</span>
                                                 </div>
-                                                <div className="text-[10px] text-stone-500 mb-2 font-mono">{perf.startTime} - {perf.endTime} • {perf.stage}</div>
-                                                <div className="text-[10px] text-stone-400 leading-snug bg-black p-2 border border-stone-800">
-                                                    <span className="text-orange-500 font-bold block mb-1 uppercase">Intro:</span>
+                                                <div className="text-[10px] text-megaport-orange mb-2 font-mono font-black">{perf.startTime} - {perf.endTime} • {perf.stage}</div>
+                                                <div className="text-[10px] text-slate-300 leading-snug bg-black p-2 border border-slate-800">
+                                                    <span className="text-megaport-cyan font-black block mb-1 uppercase tracking-wider">Intro:</span>
                                                     {rec.intro || rec.reason}
                                                 </div>
                                             </div>
@@ -376,9 +429,9 @@
                                 })}
                             </div>
                         </div>
-                        <div className="p-4 border-t-2 border-stone-700 bg-[#292524]">
-                            <button onClick={() => { onConfirm(selectedIds); onClose(); }} disabled={selectedIds.length === 0} className="w-full bg-lime-600 hover:bg-lime-500 text-black font-black py-3 disabled:opacity-50 flex items-center justify-center gap-2 transition-all uppercase tracking-wider border-2 border-transparent hover:border-white">
-                                <ThumbsUp size={16} strokeWidth={3} /> JOIN {selectedIds.length} GIGS
+                        <div className="p-4 border-t-2 border-slate-700 bg-black">
+                            <button onClick={() => { onConfirm(selectedIds); onClose(); }} disabled={selectedIds.length === 0} className="w-full bg-megaport-cyan text-black font-black py-4 disabled:opacity-50 flex items-center justify-center gap-2 transition-all uppercase tracking-wider border-2 border-black hover:bg-white active-press shadow-hard-sm">
+                                <ThumbsUp size={18} strokeWidth={3} /> JOIN {selectedIds.length} GIGS
                             </button>
                         </div>
                     </div>
@@ -391,18 +444,18 @@
             useEffect(() => setKeyInput(apiKey), [apiKey, isOpen]);
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
-                    <div className="bg-[#292524] w-full max-w-sm border-2 border-stone-600 shadow-[8px_8px_0px_0px_rgba(234,88,12,0.2)] p-6">
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-slate-900 w-full max-w-sm border-2 border-white shadow-hard-white p-6">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-black text-white flex items-center gap-2 italic uppercase"><Settings className="text-orange-500" size={24} /> Settings</h3>
-                            <button onClick={onClose} className="text-stone-500 hover:text-white"><X size={24} strokeWidth={3} /></button>
+                            <h3 className="text-2xl font-black text-white flex items-center gap-2 italic uppercase"><Settings className="text-megaport-orange" size={28} /> Settings</h3>
+                            <button onClick={onClose} className="text-white hover:text-megaport-orange"><X size={28} strokeWidth={4} /></button>
                         </div>
-                        <div className="space-y-4">
+                        <div className="space-y-5">
                             <div>
-                                <label className="text-[10px] font-black text-orange-500 uppercase tracking-widest flex items-center gap-2 mb-2"><Key size={12} /> Gemini API Key</label>
-                                <input type="password" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="API KEY HERE" className="w-full bg-black border-2 border-stone-700 px-3 py-3 text-white focus:border-orange-500 outline-none transition-all placeholder-stone-700 text-xs font-mono" />
+                                <label className="text-[10px] font-black text-megaport-orange uppercase tracking-widest flex items-center gap-2 mb-2"><Key size={14} /> Gemini API Key</label>
+                                <input type="password" value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="API KEY HERE" className="w-full bg-black border-2 border-slate-600 px-4 py-3 text-white focus:border-megaport-orange outline-none transition-all placeholder-slate-700 text-xs font-mono rounded-none" />
                             </div>
-                            <button onClick={() => { onSave(keyInput); onClose(); }} className="w-full bg-orange-600 hover:bg-orange-500 text-black font-black py-3 transition-all uppercase tracking-wider">SAVE CONFIG</button>
+                            <button onClick={() => { onSave(keyInput); onClose(); }} className="w-full bg-megaport-orange text-black font-black py-4 transition-all uppercase tracking-wider border-2 border-black hover:bg-white shadow-hard active-press">SAVE CONFIG</button>
                         </div>
                     </div>
                 </div>
@@ -412,24 +465,24 @@
         const AccountModal = ({ isOpen, onClose, user, onLogin, onLogout }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
-                    <div className="bg-[#292524] w-full max-w-sm border-2 border-stone-600 shadow-[8px_8px_0px_0px_rgba(255,255,255,0.1)] p-6">
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[70] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-slate-900 w-full max-w-sm border-2 border-white shadow-hard-white p-6">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-black text-white flex items-center gap-2 italic uppercase"><User className="text-stone-400" size={24} /> Account</h3>
-                            <button onClick={onClose} className="text-stone-500 hover:text-white"><X size={24} strokeWidth={3} /></button>
+                            <h3 className="text-2xl font-black text-white flex items-center gap-2 italic uppercase"><User className="text-slate-400" size={28} /> Account</h3>
+                            <button onClick={onClose} className="text-white hover:text-megaport-orange"><X size={28} strokeWidth={4} /></button>
                         </div>
                         <div className="space-y-6">
-                            <div className="bg-black p-6 border-2 border-stone-700 flex flex-col items-center justify-center gap-3">
-                                <div className="w-16 h-16 bg-stone-800 rounded-none border-2 border-stone-600 flex items-center justify-center">
-                                    <User size={32} className="text-stone-400" />
+                            <div className="bg-black p-6 border-2 border-slate-700 flex flex-col items-center justify-center gap-4">
+                                <div className="w-20 h-20 bg-slate-800 border-2 border-white flex items-center justify-center shadow-hard-sm">
+                                    <User size={40} className="text-white" />
                                 </div>
                                 <div className="text-center">
-                                    <div className="text-sm text-white font-black uppercase tracking-wider">{user?.isAnonymous ? 'Guest Punk' : user?.displayName || 'User'}</div>
-                                    <div className="text-[10px] text-stone-500 mt-1 font-mono">{user?.isAnonymous ? '(LOCAL DATA)' : user?.email}</div>
+                                    <div className="text-base text-white font-black uppercase tracking-wider bg-megaport-orange text-black px-2 inline-block -skew-x-12">{user?.isAnonymous ? 'Guest Punk' : user?.displayName || 'User'}</div>
+                                    <div className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-widest">{user?.isAnonymous ? '(LOCAL DATA)' : user?.email}</div>
                                 </div>
                             </div>
-                            <button onClick={() => { onLogout(); onClose(); }} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-900/10 hover:bg-red-600 hover:text-white text-red-500 font-black transition-colors border-2 border-red-900/50 uppercase tracking-wider">
-                                <LogOut size={16} /> Sign Out
+                            <button onClick={() => { onLogout(); onClose(); }} className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-black hover:bg-red-600 hover:text-white text-red-500 font-black transition-colors border-2 border-red-600 uppercase tracking-wider shadow-hard-sm active-press">
+                                <LogOut size={18} /> Sign Out
                             </button>
                         </div>
                     </div>
@@ -440,16 +493,16 @@
         const DeleteConfirmModal = ({ isOpen, onClose, onConfirm }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
-                    <div className="bg-[#292524] w-full max-w-xs border-2 border-red-600 shadow-[8px_8px_0px_0px_rgba(220,38,38,0.2)] p-6 text-center">
-                        <div className="w-12 h-12 bg-red-900/20 flex items-center justify-center mx-auto mb-4 border-2 border-red-600">
-                            <Trash2 className="text-red-500" size={24} />
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-black w-full max-w-xs border-4 border-red-600 shadow-[8px_8px_0px_0px_#dc2626] p-8 text-center">
+                        <div className="w-16 h-16 bg-red-600 flex items-center justify-center mx-auto mb-6 border-2 border-white transform rotate-3">
+                            <Trash2 className="text-white" size={32} />
                         </div>
-                        <h3 className="text-lg font-black text-white mb-2 uppercase">BURN IT?</h3>
-                        <p className="text-xs text-stone-500 mb-6 font-bold">This action cannot be undone.</p>
-                        <div className="flex gap-3">
-                            <button onClick={onClose} className="flex-1 py-3 border-2 border-stone-600 text-stone-400 hover:text-white hover:border-white text-xs font-black transition-colors uppercase">Cancel</button>
-                            <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-black text-xs font-black transition-colors uppercase">Delete</button>
+                        <h3 className="text-2xl font-black text-white mb-2 uppercase italic">BURN IT?</h3>
+                        <p className="text-xs text-red-500 mb-8 font-bold uppercase tracking-widest">This action cannot be undone.</p>
+                        <div className="flex gap-4">
+                            <button onClick={onClose} className="flex-1 py-3 border-2 border-white text-white hover:bg-white hover:text-black text-xs font-black transition-colors uppercase active-press">Cancel</button>
+                            <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 border-2 border-red-600 text-white hover:bg-red-500 text-xs font-black transition-colors uppercase shadow-hard-sm active-press">Delete</button>
                         </div>
                     </div>
                 </div>
@@ -634,160 +687,106 @@
             }, [mySchedule, performances]);
 
             const generateICS = (trip) => {
-                if (!trip.startDate) {
-                    showNotification("MISSING START DATE", "error");
-                    return;
-                }
-
-                // METHOD:PUBLISH for basic calendar events
+                if (!trip.startDate) { showNotification("MISSING START DATE", "error"); return; }
                 let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Music Sync//Live v1.0//EN\nMETHOD:PUBLISH\n";
-                
-                // Determine what to export: Specific gigs or the whole event date
-                const selectedGigs = (trip.performances && trip.mySchedule) 
-                    ? trip.performances.filter(p => trip.mySchedule.includes(p.id)) 
-                    : [];
-                
-                // Common timestamp for versioning
-                const now = new Date();
-                const dtStamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                const selectedGigs = (trip.performances && trip.mySchedule) ? trip.performances.filter(p => trip.mySchedule.includes(p.id)) : [];
+                const now = new Date(); const dtStamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
                 if (selectedGigs.length > 0) {
-                    // Scenario A: Export selected gigs
                     selectedGigs.forEach(gig => {
-                        // Try to parse day offset (e.g., "Day 1" -> 0, "Day 2" -> 1)
-                        const dayMatch = gig.day.match(/Day (\d+)/);
-                        const dayOffset = dayMatch ? parseInt(dayMatch[1]) - 1 : 0;
-                        
-                        const baseDate = new Date(trip.startDate);
-                        baseDate.setDate(baseDate.getDate() + dayOffset);
-                        
+                        const dayMatch = gig.day.match(/Day (\d+)/); const dayOffset = dayMatch ? parseInt(dayMatch[1]) - 1 : 0;
+                        const baseDate = new Date(trip.startDate); baseDate.setDate(baseDate.getDate() + dayOffset);
                         const dateStr = baseDate.toISOString().split('T')[0].replace(/-/g, '');
-                        const startTimeStr = gig.startTime.replace(':', '') + '00';
-                        const endTimeStr = gig.endTime.replace(':', '') + '00';
-                        
-                        icsContent += "BEGIN:VEVENT\n";
-                        icsContent += `UID:${gig.id}@musicsync.live\n`;
-                        icsContent += `DTSTAMP:${dtStamp}\n`;
-                        icsContent += `SUMMARY:${gig.band} @ ${gig.stage}\n`;
-                        icsContent += `DTSTART:${dateStr}T${startTimeStr}\n`;
-                        icsContent += `DTEND:${dateStr}T${endTimeStr}\n`;
-                        icsContent += `LOCATION:${gig.stage}\n`;
-                        icsContent += `DESCRIPTION:${trip.name || 'Festival'} - ${gig.band}\n`;
-                        icsContent += "END:VEVENT\n";
+                        const startTimeStr = gig.startTime.replace(':', '') + '00'; const endTimeStr = gig.endTime.replace(':', '') + '00';
+                        icsContent += `BEGIN:VEVENT\nUID:${gig.id}@musicsync.live\nDTSTAMP:${dtStamp}\nSUMMARY:${gig.band} @ ${gig.stage}\nDTSTART:${dateStr}T${startTimeStr}\nDTEND:${dateStr}T${endTimeStr}\nLOCATION:${gig.stage}\nDESCRIPTION:${trip.name || 'Festival'} - ${gig.band}\nEND:VEVENT\n`;
                     });
                     showNotification("ICS EXPORTED (GIGS)");
                 } else {
-                    // Scenario B: Export Main Event Date Range (All Day Event)
-                    const startObj = new Date(trip.startDate);
-                    const startStr = startObj.toISOString().split('T')[0].replace(/-/g, '');
-
-                    // Calculate End (Exclusive for All Day events in ICS)
-                    // If endDate is valid and after startDate, use it. Otherwise assume 1 day duration.
-                    let endObj = new Date(trip.startDate);
-                    if (trip.endDate && new Date(trip.endDate) >= startObj) {
-                        endObj = new Date(trip.endDate);
-                    }
-                    // Add 1 day for exclusive end date
-                    endObj.setDate(endObj.getDate() + 1);
-                    const endStr = endObj.toISOString().split('T')[0].replace(/-/g, '');
-
-                    icsContent += "BEGIN:VEVENT\n";
-                    // Using a unique ID based on start date so it can be updated if downloaded again
-                    icsContent += `UID:full_event_${trip.startDate}@musicsync.live\n`;
-                    icsContent += `DTSTAMP:${dtStamp}\n`;
-                    icsContent += `SUMMARY:${trip.name || 'Music Event'}\n`;
-                    // VALUE=DATE indicates all-day event
-                    icsContent += `DTSTART;VALUE=DATE:${startStr}\n`;
-                    icsContent += `DTEND;VALUE=DATE:${endStr}\n`;
-                    icsContent += `DESCRIPTION:Event dates for ${trip.name}\n`;
-                    icsContent += "END:VEVENT\n";
-                    
+                    const startObj = new Date(trip.startDate); const startStr = startObj.toISOString().split('T')[0].replace(/-/g, '');
+                    let endObj = new Date(trip.startDate); if (trip.endDate && new Date(trip.endDate) >= startObj) endObj = new Date(trip.endDate);
+                    endObj.setDate(endObj.getDate() + 1); const endStr = endObj.toISOString().split('T')[0].replace(/-/g, '');
+                    icsContent += `BEGIN:VEVENT\nUID:full_event_${trip.startDate}@musicsync.live\nDTSTAMP:${dtStamp}\nSUMMARY:${trip.name || 'Music Event'}\nDTSTART;VALUE=DATE:${startStr}\nDTEND;VALUE=DATE:${endStr}\nDESCRIPTION:Event dates for ${trip.name}\nEND:VEVENT\n`;
                     showNotification("ICS EXPORTED (DATES ONLY)");
                 }
-
                 icsContent += "END:VCALENDAR";
-
                 const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-                const link = document.createElement('a');
-                link.href = window.URL.createObjectURL(blob);
-                link.setAttribute('download', `${(trip.name || 'schedule').replace(/\s+/g, '_')}.ics`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                const link = document.createElement('a'); link.href = window.URL.createObjectURL(blob); link.setAttribute('download', `${(trip.name || 'schedule').replace(/\s+/g, '_')}.ics`);
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
             };
 
-            if (authLoading && !localStorage.getItem(CACHE_KEY)) return <div className="min-h-screen bg-[#1c1917] flex items-center justify-center"><Loader2 className="text-orange-500 animate-spin" size={32} /></div>;
+            if (authLoading && !localStorage.getItem(CACHE_KEY)) return <div className="min-h-screen bg-megaport-dark flex items-center justify-center"><Loader2 className="text-megaport-orange animate-spin" size={32} /></div>;
             if (!user && !authLoading) return <LoginPage onLogin={handleGoogleLogin} onGuestLogin={handleGuestLogin} error={loginError} />;
 
             const TripCard = ({ item }) => (
-                <div key={item.id} className="bg-[#292524] border-l-4 border-orange-600 p-4 flex justify-between items-center hover:bg-[#322d2b] transition-all group shadow-md relative overflow-hidden">
+                <div key={item.id} className="bg-slate-900 border-2 border-white p-4 flex justify-between items-center hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-hard-white transition-all group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-1 bg-megaport-orange"></div>
                     <div className="pl-1">
                         <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 uppercase tracking-wider ${item.type === 'gig' ? 'bg-lime-900 text-lime-400' : 'bg-orange-900 text-orange-400'}`}>
+                            <span className={`text-[10px] font-black px-2 py-0.5 uppercase tracking-wider border border-current ${item.type === 'gig' ? 'text-megaport-cyan' : 'text-megaport-orange'}`}>
                                 {item.type === 'gig' ? '專場' : '音樂祭'}
                             </span>
-                            <h4 className="font-black text-white text-base uppercase tracking-tight">{item.name}</h4>
+                            <h4 className="font-black text-white text-lg uppercase tracking-tight italic">{item.name}</h4>
                         </div>
-                        <div className="text-[10px] text-stone-500 flex items-center gap-2 font-bold font-mono">
-                            <span className="flex items-center gap-1"><Calendar size={10} /> {item.startDate || item.dateSaved.split('T')[0]}</span>
-                            <span>•</span>
+                        <div className="text-[10px] text-slate-400 flex items-center gap-2 font-bold font-mono uppercase tracking-widest">
+                            <span className="flex items-center gap-1"><Calendar size={12} /> {item.startDate || item.dateSaved.split('T')[0]}</span>
+                            <span>/</span>
                             <span>{item.performances?.length || 0} ACTS</span>
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={() => generateICS(item)} className="p-2 bg-lime-900/10 text-lime-500 hover:bg-lime-900/30 transition-colors" title="Export Calendar"><CalendarPlus size={16} /></button>
-                        <button onClick={() => loadFromHistory(item)} className="p-2 bg-stone-800 text-stone-400 hover:text-white hover:bg-stone-700 transition-colors"><Upload size={16} /></button>
-                        <button onClick={(e) => requestDeleteHistory(e, item.id)} className="p-2 bg-red-900/10 text-red-500 hover:bg-red-900/30 transition-colors"><Trash2 size={16} /></button>
+                        <button onClick={() => generateICS(item)} className="p-2 bg-megaport-cyan text-black hover:bg-white border border-black transition-colors" title="Export Calendar"><CalendarPlus size={18} strokeWidth={3} /></button>
+                        <button onClick={() => loadFromHistory(item)} className="p-2 bg-white text-black hover:bg-slate-200 border border-black transition-colors"><Upload size={18} strokeWidth={3} /></button>
+                        <button onClick={(e) => requestDeleteHistory(e, item.id)} className="p-2 bg-red-600 text-white hover:bg-red-500 border border-black transition-colors"><Trash2 size={18} strokeWidth={3} /></button>
                     </div>
                 </div>
             );
 
             return (
-                <div className="min-h-screen bg-[#1c1917] bg-grunge text-stone-200 font-sans pb-24 selection:bg-orange-500 selection:text-black relative overflow-hidden">
+                <div className="min-h-screen bg-megaport-dark bg-noise text-slate-100 font-sans pb-24 selection:bg-megaport-orange selection:text-black relative overflow-hidden">
                 <Notification message={notification.message} type={notification.type} onClose={() => setNotification({message: '', type: ''})} />
                 <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} apiKey={apiKey} onSave={handleSaveApiKey} />
                 <AccountModal isOpen={showAccount} onClose={() => setShowAccount(false)} user={user} onLogin={handleGoogleLogin} onLogout={handleLogout} />
                 <DeleteConfirmModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={confirmDeleteHistory} />
                 <RecommendationReviewModal isOpen={showRecReview} onClose={() => setShowRecReview(false)} recResult={recResult} allPerformances={performances} onConfirm={handleConfirmRecommendations} />
 
-                <header className="sticky top-0 z-30 bg-[#1c1917]/90 backdrop-blur-md border-b-2 border-stone-800 pt-safe">
-                    <div className="max-w-2xl mx-auto px-4 py-3 space-y-3">
+                <header className="sticky top-0 z-30 bg-black/90 backdrop-blur-md border-b-2 border-white pt-safe">
+                    <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
                         <div className="flex justify-between items-center">
-                            <div className="flex items-center space-x-2 group">
-                                <div className="bg-orange-600 text-black p-1 shadow-sm group-hover:bg-lime-500 transition-colors">
-                                    <Sprout size={20} strokeWidth={2.5} fill="currentColor" />
+                            <div className="flex items-center gap-3 group">
+                                <div className="bg-megaport-orange text-black p-1.5 shadow-hard-white group-hover:rotate-6 transition-transform border-2 border-black">
+                                    <Anchor size={24} strokeWidth={3} fill="currentColor" />
                                 </div>
                                 <div>
-                                    <h1 className="text-base font-black tracking-tighter text-white italic leading-none font-mono">
-                                        MUSIC<span className="text-orange-500">.</span>SYNC
+                                    <h1 className="text-2xl font-black tracking-tighter text-white italic leading-none font-mono" style={{textShadow: "2px 2px 0px #000"}}>
+                                        MUSIC<span className="text-megaport-orange">.</span>SYNC
                                     </h1>
-                                    <p className="text-[9px] text-stone-500 font-bold tracking-[0.2em] mt-0.5 uppercase">LIVE</p>
+                                    <p className="text-[10px] text-megaport-cyan font-bold tracking-[0.3em] uppercase bg-black inline-block px-1">MEGAPORT STYLE</p>
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => setShowAccount(true)} className="p-2 text-stone-500 hover:text-white hover:bg-stone-800 transition-colors"><User size={16} strokeWidth={2.5}/></button>
-                                <button onClick={() => setShowSettings(true)} className="p-2 text-stone-500 hover:text-white hover:bg-stone-800 transition-colors"><Settings size={16} strokeWidth={2.5}/></button>
-                                <button onClick={() => saveCurrentToHistory()} className="p-2 text-lime-600 hover:text-lime-400 hover:bg-stone-800 transition-colors"><Save size={16} strokeWidth={2.5}/></button>
-                                <button onClick={() => startNewFestival(true)} className="p-2 text-red-500 hover:text-red-400 hover:bg-stone-800 transition-colors"><RotateCcw size={16} strokeWidth={2.5}/></button>
+                                <button onClick={() => setShowAccount(true)} className="p-2 text-white hover:text-megaport-cyan border-2 border-transparent hover:border-white hover:bg-black transition-all active-press"><User size={20} strokeWidth={3}/></button>
+                                <button onClick={() => setShowSettings(true)} className="p-2 text-white hover:text-megaport-orange border-2 border-transparent hover:border-white hover:bg-black transition-all active-press"><Settings size={20} strokeWidth={3}/></button>
+                                <button onClick={() => saveCurrentToHistory()} className="p-2 text-black bg-megaport-cyan hover:bg-white border-2 border-black shadow-sm transition-all active-press"><Save size={20} strokeWidth={3}/></button>
+                                <button onClick={() => startNewFestival(true)} className="p-2 text-white bg-red-600 hover:bg-red-500 border-2 border-black shadow-sm transition-all active-press"><RotateCcw size={20} strokeWidth={3}/></button>
                             </div>
                         </div>
 
                         {view === 'manage' && (
-                            <div className="flex flex-col gap-2 animate-fadeIn">
-                                <div className="flex gap-2 w-full">
-                                    <div className="flex bg-stone-900 border border-stone-700 shrink-0 h-10 p-1">
-                                        <button onClick={() => setEventType('festival')} className={`px-3 font-black text-xs uppercase transition-all h-full flex items-center gap-1 ${eventType === 'festival' ? 'bg-orange-600 text-black' : 'text-stone-500 hover:text-stone-300'}`}><Ticket size={14}/> 音樂祭</button>
-                                        <button onClick={() => setEventType('gig')} className={`px-3 font-black text-xs uppercase transition-all h-full flex items-center gap-1 ${eventType === 'gig' ? 'bg-lime-600 text-black' : 'text-stone-500 hover:text-stone-300'}`}><Mic2 size={14}/> 專場</button>
+                            <div className="flex flex-col gap-3 animate-fadeIn">
+                                <div className="flex gap-3 w-full">
+                                    <div className="flex bg-black border-2 border-white shrink-0 h-12 p-1 gap-1 shadow-hard-sm">
+                                        <button onClick={() => setEventType('festival')} className={`px-4 font-black text-xs uppercase transition-all h-full flex items-center gap-2 ${eventType === 'festival' ? 'bg-megaport-orange text-black border-2 border-black' : 'text-slate-500 hover:text-white'}`}><Ticket size={16} strokeWidth={3}/> 音樂祭</button>
+                                        <button onClick={() => setEventType('gig')} className={`px-4 font-black text-xs uppercase transition-all h-full flex items-center gap-2 ${eventType === 'gig' ? 'bg-megaport-cyan text-black border-2 border-black' : 'text-slate-500 hover:text-white'}`}><Mic2 size={16} strokeWidth={3}/> 專場</button>
                                     </div>
-                                    <input value={festivalName} onChange={(e) => setFestivalName(e.target.value)} placeholder="EVENT NAME" className="flex-1 min-w-0 bg-stone-900 border border-stone-700 py-1 px-3 text-sm font-bold text-white focus:border-orange-500 outline-none transition-all placeholder-stone-600 font-mono uppercase h-10" />
+                                    <input value={festivalName} onChange={(e) => setFestivalName(e.target.value)} placeholder="EVENT NAME" className="flex-1 min-w-0 bg-black border-2 border-white py-2 px-4 text-base font-bold text-white focus:border-megaport-orange outline-none transition-all placeholder-slate-700 font-mono uppercase h-12 shadow-hard-sm rounded-none" />
                                 </div>
-                                <div className="flex items-center gap-2 bg-stone-900 px-3 py-1 border border-stone-700 h-9 w-full">
-                                    <Calendar size={14} className="text-orange-500 shrink-0"/>
-                                    <input type="date" value={startDate} style={{ colorScheme: 'dark' }} onChange={(e) => { setStartDate(e.target.value); if(eventType === 'festival') setEndDate(e.target.value); }} className="bg-transparent text-xs font-bold text-stone-300 outline-none flex-1 uppercase text-center font-mono" />
+                                <div className="flex items-center gap-3 bg-black px-4 py-2 border-2 border-white h-12 w-full shadow-hard-sm">
+                                    <Calendar size={18} className="text-megaport-orange shrink-0" strokeWidth={3}/>
+                                    <input type="date" value={startDate} style={{ colorScheme: 'dark' }} onChange={(e) => { setStartDate(e.target.value); if(eventType === 'festival') setEndDate(e.target.value); }} className="bg-transparent text-sm font-bold text-white outline-none flex-1 uppercase text-center font-mono tracking-wider" />
                                     {eventType === 'festival' && (
                                         <>
-                                            <ArrowRight size={12} className="text-stone-600 shrink-0" />
-                                            <input type="date" min={startDate} value={endDate} style={{ colorScheme: 'dark' }} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-xs font-bold text-stone-300 outline-none flex-1 uppercase text-center font-mono" />
+                                            <ArrowRight size={16} className="text-slate-600 shrink-0" strokeWidth={4} />
+                                            <input type="date" min={startDate} value={endDate} style={{ colorScheme: 'dark' }} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-sm font-bold text-white outline-none flex-1 uppercase text-center font-mono tracking-wider" />
                                         </>
                                     )}
                                 </div>
@@ -796,25 +795,25 @@
                     </div>
                 </header>
 
-                <main className="max-w-2xl mx-auto px-4 py-4 space-y-4 relative z-10">
+                <main className="max-w-2xl mx-auto px-4 py-6 space-y-6 relative z-10">
                     {view === 'manage' && (
-                        <div className="space-y-4 animate-fadeIn">
-                            <div className="flex flex-col gap-2 mb-1"> 
-                                <div className="w-full overflow-x-auto no-scrollbar pb-1">
-                                    <div className="flex gap-2 items-center">
+                        <div className="space-y-6 animate-fadeIn">
+                            <div className="flex flex-col gap-4 mb-2"> 
+                                <div className="w-full overflow-x-auto no-scrollbar pb-2">
+                                    <div className="flex gap-3 items-center">
                                         {days.map(d => (
-                                            <button key={d} onClick={() => setActiveDay(d)} className={`px-4 py-2 text-xs font-black tracking-wider whitespace-nowrap transition-all border-2 shrink-0 uppercase ${activeDay === d ? 'bg-white text-black border-white shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)]' : 'bg-transparent text-stone-500 border-stone-700 hover:border-stone-500 hover:text-stone-300'}`}>{d}</button>
+                                            <button key={d} onClick={() => setActiveDay(d)} className={`px-6 py-3 text-sm font-black tracking-widest whitespace-nowrap transition-all border-2 shrink-0 uppercase active-press ${activeDay === d ? 'bg-megaport-orange text-black border-black shadow-hard' : 'bg-transparent text-slate-500 border-slate-700 hover:border-white hover:text-white'}`}>{d}</button>
                                         ))}
                                     </div>
                                 </div>
-                                <div className="flex justify-between items-center pt-3 border-t-2 border-stone-800 mt-1">
-                                    <span className="text-[10px] text-stone-600 font-black tracking-widest uppercase">Console</span>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => { setIsAddFormOpen(!isAddFormOpen); setEditingItem(null); }} className={`h-9 px-4 flex items-center justify-center border-2 transition-all gap-1.5 uppercase ${isAddFormOpen ? 'bg-white text-black border-white' : 'bg-transparent text-stone-300 border-stone-600 hover:border-white hover:text-white'}`}>
-                                            <Plus size={16} className={isAddFormOpen ? "rotate-45 transition-transform" : ""} strokeWidth={3}/> <span className="text-[10px] font-black">Add</span>
+                                <div className="flex justify-between items-center pt-4 border-t-4 border-black mt-2 bg-megaport-yellow/10 p-2 -mx-2">
+                                    <span className="text-xs text-megaport-yellow font-black tracking-[0.2em] uppercase flex items-center gap-2"><div className="w-2 h-2 bg-megaport-yellow animate-pulse"></div> CONSOLE</span>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => { setIsAddFormOpen(!isAddFormOpen); setEditingItem(null); }} className={`h-10 px-5 flex items-center justify-center border-2 transition-all gap-2 uppercase active-press ${isAddFormOpen ? 'bg-white text-black border-white shadow-hard' : 'bg-transparent text-white border-white hover:bg-white hover:text-black'}`}>
+                                            <Plus size={18} className={isAddFormOpen ? "rotate-45 transition-transform" : ""} strokeWidth={4}/> <span className="text-xs font-black">ADD</span>
                                         </button>
-                                        <button onClick={() => { setAiMode('import'); setImportDay(activeDay); setShowAIModal(true); }} className="h-9 px-4 bg-orange-600 text-black border-2 border-orange-600 text-[10px] font-black flex items-center gap-1.5 hover:bg-orange-500 hover:border-orange-500 transition-all uppercase">
-                                            <Sparkles size={16} strokeWidth={2.5}/> <span>AI Import</span>
+                                        <button onClick={() => { setAiMode('import'); setImportDay(activeDay); setShowAIModal(true); }} className="h-10 px-5 bg-black text-megaport-cyan border-2 border-megaport-cyan text-xs font-black flex items-center gap-2 hover:bg-megaport-cyan hover:text-black shadow-[4px_4px_0px_0px_#00E5FF] active-press transition-all uppercase">
+                                            <Sparkles size={18} strokeWidth={3}/> <span>AI IMPORT</span>
                                         </button>
                                     </div>
                                 </div>
@@ -822,29 +821,29 @@
 
                             <AddPerformanceForm isOpen={isAddFormOpen} onAdd={addPerformance} onUpdate={updatePerformance} onDelete={removePerformance} onCancel={() => setIsAddFormOpen(false)} editingItem={null} activeDay={activeDay} days={days} />
 
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                                 {currentDayPerformances.length === 0 ? (
-                                    <div className="text-center py-16 border-2 border-dashed border-stone-800 bg-[#1c1917]">
-                                        <p className="text-stone-600 text-xs font-black tracking-[0.2em] uppercase">VOID / NO SIGNAL</p>
+                                    <div className="text-center py-20 border-4 border-black bg-hazard-stripe opacity-20">
+                                        <p className="text-white text-xl font-black tracking-[0.5em] uppercase bg-black inline-block px-4 py-2">NO SIGNAL</p>
                                     </div>
                                 ) : (
                                     currentDayPerformances.map(p => (
                                         <div key={p.id}>
-                                            <div onClick={() => toggleMySchedule(p.id)} className={`relative group p-4 border-l-4 transition-all cursor-pointer bg-[#292524] hover:bg-[#322d2b] ${mySchedule.includes(p.id) ? 'border-l-orange-500 bg-stone-800' : 'border-l-stone-700'} ${editingItem?.id === p.id ? 'ring-2 ring-orange-500' : ''}`}>
+                                            <div onClick={() => toggleMySchedule(p.id)} className={`relative group p-5 border-2 transition-all cursor-pointer hover:translate-x-[-2px] hover:translate-y-[-2px] hover:shadow-hard-white ${mySchedule.includes(p.id) ? 'bg-megaport-orange text-black border-black shadow-hard' : 'bg-slate-900 border-white text-white hover:bg-slate-800'} ${editingItem?.id === p.id ? 'ring-4 ring-megaport-cyan' : ''}`}>
                                                 <div className="flex justify-between items-start">
                                                     <div className="flex-1">
-                                                        <h3 className={`font-black text-lg flex items-center gap-2 uppercase tracking-tight ${mySchedule.includes(p.id) ? 'text-white' : 'text-stone-400'}`}>
+                                                        <h3 className="font-black text-xl flex items-center gap-3 uppercase tracking-tighter leading-none">
                                                             {p.band}
-                                                            {conflicts.has(p.id) && mySchedule.includes(p.id) && <AlertTriangle size={16} className="text-red-500 animate-pulse" />}
+                                                            {conflicts.has(p.id) && mySchedule.includes(p.id) && <AlertTriangle size={20} className="text-black animate-bounce" strokeWidth={3} />}
                                                         </h3>
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                            <span className="text-[10px] font-bold font-mono text-black bg-stone-400 px-1">{p.startTime} - {p.endTime}</span>
-                                                            <span className="text-[10px] text-stone-500 font-bold uppercase tracking-wider flex items-center gap-1"><MapPin size={10}/> {p.stage}</span>
+                                                        <div className="flex items-center gap-3 mt-2">
+                                                            <span className={`text-xs font-bold font-mono px-2 py-0.5 border-2 ${mySchedule.includes(p.id) ? 'bg-black text-white border-black' : 'bg-white text-black border-white'}`}>{p.startTime} - {p.endTime}</span>
+                                                            <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1 opacity-80"><MapPin size={12} strokeWidth={3}/> {p.stage}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex flex-col gap-3 items-end pl-2">
-                                                        <Heart size={18} strokeWidth={2.5} className={`transition-all ${mySchedule.includes(p.id) ? 'fill-orange-600 text-orange-600' : 'text-stone-700 hover:text-stone-500'}`} />
-                                                        <button onClick={(e) => { e.stopPropagation(); setEditingItem(editingItem?.id === p.id ? null : p); setIsAddFormOpen(false); }} className="text-stone-600 hover:text-white transition-colors"><Edit size={16}/></button>
+                                                    <div className="flex flex-col gap-4 items-end pl-2">
+                                                        <Heart size={24} strokeWidth={3} className={`transition-all ${mySchedule.includes(p.id) ? 'fill-black text-black' : 'text-slate-600 hover:text-white'}`} />
+                                                        <button onClick={(e) => { e.stopPropagation(); setEditingItem(editingItem?.id === p.id ? null : p); setIsAddFormOpen(false); }} className={`${mySchedule.includes(p.id) ? 'text-black/50 hover:text-black' : 'text-slate-600 hover:text-white'} transition-colors`}><Edit size={20} strokeWidth={3}/></button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -858,47 +857,47 @@
 
                     {view === 'program' && (
                         <div className="h-[calc(100vh-140px)] flex flex-col animate-fadeIn">
-                            <div className="flex justify-between items-center mb-2 shrink-0 border-b-2 border-stone-800 pb-2">
-                                <div className="flex flex-col">
-                                    <h2 className="text-white font-black text-xl italic tracking-tighter uppercase">{festivalName || 'UNTITLED'}</h2>
-                                    <div className="text-[10px] text-stone-500 font-bold font-mono">
-                                        <span className="text-orange-500">{mySchedule.length}</span> SELECTED / {performances.length} TOTAL
+                            <div className="flex justify-between items-center mb-4 shrink-0 border-b-4 border-black pb-4 bg-megaport-orange p-3 -mx-4 shadow-hard">
+                                <div className="flex flex-col ml-2">
+                                    <h2 className="text-black font-black text-3xl italic tracking-tighter uppercase leading-none">{festivalName || 'UNTITLED'}</h2>
+                                    <div className="text-xs text-black/70 font-bold font-mono mt-1">
+                                        <span className="text-black text-lg">{mySchedule.length}</span> SELECTED / {performances.length} TOTAL
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => generateICS({ name: festivalName, startDate, performances, mySchedule })} className="text-[10px] bg-lime-900/30 text-lime-400 border border-lime-600/50 font-black px-3 py-1.5 uppercase flex items-center gap-1 hover:bg-lime-900/50 transition-colors shadow-[2px_2px_0px_0px_rgba(132,204,22,0.1)]">
-                                        <CalendarPlus size={12} /> ICS
+                                <div className="flex gap-2 mr-2">
+                                    <button onClick={() => generateICS({ name: festivalName, startDate, performances, mySchedule })} className="text-[10px] bg-black text-white border-2 border-black font-black px-3 py-2 uppercase flex items-center gap-1 hover:bg-white hover:text-black transition-all shadow-[-2px_-2px_0px_0px_#fff]">
+                                        <CalendarPlus size={14} strokeWidth={3}/> ICS
                                     </button>
-                                    <button onClick={() => { setAiMode('recommend'); setShowAIModal(true); }} className="text-[10px] bg-white text-black font-black px-3 py-1.5 uppercase flex items-center gap-1 hover:bg-stone-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.3)]">
-                                        <Sparkles size={12} className="text-orange-600" /> AI PICK
+                                    <button onClick={() => { setAiMode('recommend'); setShowAIModal(true); }} className="text-[10px] bg-white text-black border-2 border-black font-black px-3 py-2 uppercase flex items-center gap-1 hover:bg-megaport-cyan hover:border-black transition-all shadow-[-2px_-2px_0px_0px_#000]">
+                                        <Sparkles size={14} strokeWidth={3}/> AI PICK
                                     </button>
                                 </div>
                             </div>
                             
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar mb-3 shrink-0 py-1">
+                            <div className="flex gap-3 overflow-x-auto no-scrollbar mb-4 shrink-0 py-1 px-1">
                                 {days.map(d => (
-                                    <button key={d} onClick={() => setActiveDay(d)} className={`px-4 py-1 text-[10px] font-black uppercase tracking-wider whitespace-nowrap border-2 transition-all ${activeDay === d ? 'bg-orange-600 border-orange-600 text-black' : 'bg-transparent border-stone-700 text-stone-500 hover:border-stone-500 hover:text-stone-300'}`}>{d}</button>
+                                    <button key={d} onClick={() => setActiveDay(d)} className={`px-6 py-2 text-xs font-black uppercase tracking-widest whitespace-nowrap border-2 transition-all shadow-sm ${activeDay === d ? 'bg-megaport-cyan border-megaport-cyan text-black' : 'bg-black border-slate-700 text-slate-500 hover:border-white hover:text-white'}`}>{d}</button>
                                 ))}
                             </div>
 
                             <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
-                                <div className="flex gap-4 h-full px-1 min-w-min">
-                                    {currentDayPerformances.length === 0 ? <div className="text-stone-700 m-auto text-sm font-black tracking-widest uppercase">SILENCE</div> : uniqueStages.map(stage => (
-                                        <div key={stage} className="flex-none w-[240px] flex flex-col h-full bg-[#1c1917] border-2 border-stone-800">
-                                            <div className="p-3 border-b-2 border-stone-800 bg-stone-900 text-center shrink-0">
-                                                <h3 className="text-stone-300 font-black text-sm tracking-[0.1em] uppercase">{stage}</h3>
+                                <div className="flex gap-6 h-full px-1 min-w-min">
+                                    {currentDayPerformances.length === 0 ? <div className="text-slate-700 m-auto text-xl font-black tracking-widest uppercase bg-black px-4 py-2 border-2 border-slate-800">SILENCE</div> : uniqueStages.map(stage => (
+                                        <div key={stage} className="flex-none w-[260px] flex flex-col h-full bg-slate-900 border-2 border-white shadow-hard-white">
+                                            <div className="p-3 border-b-2 border-white bg-black text-center shrink-0">
+                                                <h3 className="text-white font-black text-lg tracking-widest uppercase">{stage}</h3>
                                             </div>
-                                            <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar bg-[#1c1917]">
+                                            <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar bg-slate-900">
                                                 {currentDayPerformances.filter(p => p.stage === stage).map(p => (
-                                                    <div key={p.id} onClick={() => toggleMySchedule(p.id)} className={`p-3 border-l-4 transition-all cursor-pointer ${mySchedule.includes(p.id) ? 'bg-stone-800 border-l-orange-500 border-t border-r border-b border-stone-700' : 'bg-[#292524] border-l-stone-600 border-stone-800 opacity-60 hover:opacity-100'}`}>
+                                                    <div key={p.id} onClick={() => toggleMySchedule(p.id)} className={`p-4 border-2 transition-all cursor-pointer hover:scale-[1.02] active:scale-100 ${mySchedule.includes(p.id) ? 'bg-megaport-orange text-black border-black shadow-[2px_2px_0px_0px_#000]' : 'bg-black border-slate-700 text-slate-400 opacity-80 hover:opacity-100 hover:border-white hover:text-white'}`}>
                                                         <div className="flex justify-between items-start mb-2">
-                                                            <span className="font-black text-white text-sm leading-tight uppercase">
+                                                            <span className="font-black text-sm leading-tight uppercase tracking-tight">
                                                                 {p.band}
-                                                                {mySchedule.includes(p.id) && conflicts.has(p.id) && <AlertTriangle size={14} className="text-red-500 animate-pulse inline-block ml-1.5 align-text-bottom" />}
+                                                                {mySchedule.includes(p.id) && conflicts.has(p.id) && <AlertTriangle size={16} className="text-white animate-pulse inline-block ml-1.5 align-text-bottom" strokeWidth={3} />}
                                                             </span>
-                                                            {mySchedule.includes(p.id) && <Heart size={14} className="fill-orange-500 text-orange-500 shrink-0 ml-1" />}
+                                                            {mySchedule.includes(p.id) && <Heart size={16} className="fill-black text-black shrink-0 ml-1" strokeWidth={3} />}
                                                         </div>
-                                                        <div className="text-[10px] text-stone-500 font-mono font-bold bg-black inline-block px-1">{p.startTime} - {p.endTime}</div>
+                                                        <div className={`text-[10px] font-mono font-black inline-block px-1 border ${mySchedule.includes(p.id) ? 'bg-black text-white border-black' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{p.startTime} - {p.endTime}</div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -910,32 +909,34 @@
                     )}
 
                     {view === 'trips' && (
-                        <div className="space-y-6 animate-fadeIn pb-24">
-                            <div className="flex items-center gap-2 mb-4 border-b-2 border-stone-800 pb-2">
-                                <History className="text-orange-500" size={24} />
-                                <h2 className="text-2xl font-black text-white italic tracking-tighter uppercase">ARCHIVES</h2>
+                        <div className="space-y-8 animate-fadeIn pb-24">
+                            <div className="flex items-center gap-4 mb-6 border-b-4 border-white pb-4">
+                                <div className="bg-white text-black p-2 border-2 border-black rotate-6 shadow-hard-orange">
+                                    <History size={32} strokeWidth={3} />
+                                </div>
+                                <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">ARCHIVES</h2>
                             </div>
                             {history.length === 0 ? (
-                                <div className="text-center py-20 border-2 border-dashed border-stone-800">
-                                    <FolderOpen size={40} className="mx-auto text-stone-700 mb-2" />
-                                    <p className="text-stone-700 text-xs font-black tracking-widest uppercase">EMPTY VAULT</p>
+                                <div className="text-center py-24 border-4 border-black bg-hazard-stripe opacity-10">
+                                    <FolderOpen size={64} className="mx-auto text-white mb-4" strokeWidth={3} />
+                                    <p className="text-white text-2xl font-black tracking-widest uppercase bg-black inline-block px-4">EMPTY VAULT</p>
                                 </div>
                             ) : (
                                 <>
                                     {upcomingTrips.length > 0 && (
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2 text-orange-500 mb-2">
-                                                <Zap size={16} fill="currentColor" /> <span className="text-xs font-black tracking-widest uppercase">Imminent</span>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2 text-megaport-cyan mb-2">
+                                                <Zap size={20} fill="currentColor" /> <span className="text-sm font-black tracking-[0.2em] uppercase bg-black px-2">Imminent</span>
                                             </div>
-                                            <div className="grid gap-3">{upcomingTrips.map(item => <TripCard key={item.id} item={item} />)}</div>
+                                            <div className="grid gap-4">{upcomingTrips.map(item => <TripCard key={item.id} item={item} />)}</div>
                                         </div>
                                     )}
                                     {pastTrips.length > 0 && (
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2 text-stone-600 mb-2">
-                                                <Hourglass size={16} /> <span className="text-xs font-black tracking-widest uppercase">Legacy</span>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2 text-slate-500 mb-2">
+                                                <Hourglass size={20} /> <span className="text-sm font-black tracking-[0.2em] uppercase bg-black px-2">Legacy</span>
                                             </div>
-                                            <div className="grid gap-3 opacity-60 hover:opacity-100 transition-opacity">{pastTrips.map(item => <TripCard key={item.id} item={item} />)}</div>
+                                            <div className="grid gap-4 opacity-60 hover:opacity-100 transition-opacity">{pastTrips.map(item => <TripCard key={item.id} item={item} />)}</div>
                                         </div>
                                     )}
                                 </>
@@ -944,62 +945,63 @@
                     )}
                 </main>
 
-                <nav className="fixed bottom-0 w-full bg-[#1c1917] border-t-2 border-stone-800 pb-safe z-50">
+                <nav className="fixed bottom-0 w-full bg-black border-t-2 border-white pb-safe z-50 shadow-[0px_-4px_20px_0px_rgba(0,0,0,0.5)]">
                     <div className="flex justify-around max-w-2xl mx-auto">
-                        <button onClick={() => setView('manage')} className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all uppercase ${view === 'manage' ? 'text-orange-500' : 'text-stone-600 hover:text-stone-400'}`}>
-                            <List size={20} strokeWidth={3} /> <span className="text-[9px] font-black tracking-widest">Manage</span>
+                        <button onClick={() => setView('manage')} className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all uppercase active:bg-slate-900 ${view === 'manage' ? 'text-megaport-orange bg-slate-900 border-t-4 border-megaport-orange' : 'text-slate-500 hover:text-white border-t-4 border-transparent'}`}>
+                            <List size={22} strokeWidth={3} /> <span className="text-[10px] font-black tracking-widest">Manage</span>
                         </button>
-                        <button onClick={() => setView('program')} className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all uppercase ${view === 'program' ? 'text-orange-500' : 'text-stone-600 hover:text-stone-400'}`}>
-                            <LayoutGrid size={20} strokeWidth={3} /> <span className="text-[9px] font-black tracking-widest">Lineup</span>
+                        <button onClick={() => setView('program')} className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all uppercase active:bg-slate-900 ${view === 'program' ? 'text-megaport-orange bg-slate-900 border-t-4 border-megaport-orange' : 'text-slate-500 hover:text-white border-t-4 border-transparent'}`}>
+                            <LayoutGrid size={22} strokeWidth={3} /> <span className="text-[10px] font-black tracking-widest">Lineup</span>
                         </button>
-                        <button onClick={() => setView('trips')} className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all uppercase ${view === 'trips' ? 'text-orange-500' : 'text-stone-600 hover:text-stone-400'}`}>
-                            <History size={20} strokeWidth={3} /> <span className="text-[9px] font-black tracking-widest">History</span>
+                        <button onClick={() => setView('trips')} className={`flex-1 py-4 flex flex-col items-center gap-1 transition-all uppercase active:bg-slate-900 ${view === 'trips' ? 'text-megaport-orange bg-slate-900 border-t-4 border-megaport-orange' : 'text-slate-500 hover:text-white border-t-4 border-transparent'}`}>
+                            <History size={22} strokeWidth={3} /> <span className="text-[10px] font-black tracking-widest">History</span>
                         </button>
                     </div>
                 </nav>
 
                 {showAIModal && (
-                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
-                        <div className="bg-[#292524] w-full max-w-sm border-2 border-white shadow-[8px_8px_0px_0px_rgba(255,255,255,0.2)] flex flex-col max-h-[85vh] relative">
-                            <div className="p-4 border-b-2 border-stone-700 flex justify-between items-center bg-stone-900">
-                                <h3 className="text-base font-black text-white flex items-center gap-2 italic uppercase">
-                                    <Sparkles className="text-orange-500" size={16} /> {aiMode === 'import' ? 'AI IMPORTER' : 'AI PLANNER'}
+                    <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[80] flex items-center justify-center p-4 animate-fadeIn">
+                        <div className="bg-slate-900 w-full max-w-sm border-2 border-white shadow-hard-white flex flex-col max-h-[85vh] relative">
+                            <div className="p-4 border-b-2 border-white flex justify-between items-center bg-black">
+                                <h3 className="text-xl font-black text-white flex items-center gap-3 italic uppercase">
+                                    <Sparkles className="text-megaport-orange" size={20} strokeWidth={3} /> {aiMode === 'import' ? 'AI IMPORTER' : 'AI PLANNER'}
                                 </h3>
-                                <button onClick={() => { setShowAIModal(false); setAiError(''); setSelectedImage(null); }} className="text-stone-500 hover:text-white"><X size={24} strokeWidth={3} /></button>
+                                <button onClick={() => { setShowAIModal(false); setAiError(''); setSelectedImage(null); }} className="text-slate-500 hover:text-white"><X size={28} strokeWidth={4} /></button>
                             </div>
-                            <div className="p-6 overflow-y-auto bg-[#1c1917]">
+                            <div className="p-6 overflow-y-auto bg-megaport-dark bg-noise">
                                 {aiMode === 'import' ? (
-                                    <div className="space-y-4">
-                                        <div className="bg-stone-900 p-3 border-2 border-stone-700 flex items-center justify-between">
-                                            <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest">Target Day</span>
+                                    <div className="space-y-6">
+                                        <div className="bg-black p-4 border-2 border-white shadow-hard-sm flex items-center justify-between">
+                                            <span className="text-xs font-black text-megaport-cyan uppercase tracking-widest">Target Day</span>
                                             <div className="relative">
-                                                <select value={importDay} onChange={(e) => setImportDay(e.target.value)} className="bg-stone-800 border border-stone-600 rounded-none pl-2 pr-6 py-1 text-white text-xs font-bold outline-none uppercase appearance-none cursor-pointer hover:border-orange-500">
-                                                    {days.map(d => <option key={d} value={d} className="bg-stone-900">{d}</option>)}
+                                                <select value={importDay} onChange={(e) => setImportDay(e.target.value)} className="bg-slate-800 border-2 border-slate-600 pl-3 pr-8 py-2 text-white text-sm font-bold outline-none uppercase appearance-none cursor-pointer hover:border-megaport-orange rounded-none transition-colors">
+                                                    {days.map(d => <option key={d} value={d} className="bg-black">{d}</option>)}
                                                 </select>
-                                                <div className="absolute right-1.5 top-1/2 transform -translate-y-1/2 pointer-events-none text-stone-400"><ChevronDown size={10} /></div>
+                                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none text-white"><ChevronDown size={14} strokeWidth={3}/></div>
                                             </div>
                                         </div>
-                                        <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-stone-600 hover:border-orange-500 bg-[#292524] p-8 text-center cursor-pointer transition-all group">
+                                        <div onClick={() => fileInputRef.current?.click()} className="border-4 border-dashed border-slate-700 hover:border-megaport-orange bg-black p-10 text-center cursor-pointer transition-all group relative overflow-hidden">
+                                            <div className="absolute inset-0 bg-hazard-stripe opacity-5 group-hover:opacity-10 transition-opacity"></div>
                                             {selectedImage ? (
-                                                <img src={selectedImage} alt="Preview" className="max-h-40 mx-auto shadow-2xl object-contain border-2 border-stone-800" />
+                                                <img src={selectedImage} alt="Preview" className="max-h-40 mx-auto shadow-2xl object-contain border-2 border-white relative z-10" />
                                             ) : (
-                                                <div className="flex flex-col items-center gap-3 text-stone-500 group-hover:text-orange-500 transition-colors">
-                                                    <Camera size={32} /> <span className="text-[10px] font-black tracking-widest uppercase">UPLOAD IMAGE</span>
+                                                <div className="flex flex-col items-center gap-4 text-slate-500 group-hover:text-megaport-orange transition-colors relative z-10">
+                                                    <Camera size={48} strokeWidth={2} /> <span className="text-xs font-black tracking-widest uppercase bg-black px-2">UPLOAD IMAGE</span>
                                                 </div>
                                             )}
                                             <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                                         </div>
-                                        {aiError && <div className="p-3 bg-red-900/20 text-red-500 text-xs font-bold border-2 border-red-900 flex gap-2"><AlertCircle size={14} /> {aiError}</div>}
-                                        <button onClick={runAIImageImport} disabled={!selectedImage || aiLoading} className="w-full bg-orange-600 hover:bg-orange-500 text-black font-black py-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all uppercase tracking-wider">
-                                            {aiLoading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} {aiLoading ? 'PROCESSING...' : 'EXECUTE IMPORT'}
+                                        {aiError && <div className="p-4 bg-red-600 text-white text-xs font-bold border-2 border-black shadow-hard-sm flex gap-3 items-center"><AlertCircle size={20} /> {aiError}</div>}
+                                        <button onClick={runAIImageImport} disabled={!selectedImage || aiLoading} className="w-full bg-megaport-orange hover:bg-white hover:text-black text-black font-black py-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all uppercase tracking-wider border-2 border-black shadow-hard active-press">
+                                            {aiLoading ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} strokeWidth={3} />} {aiLoading ? 'PROCESSING...' : 'EXECUTE IMPORT'}
                                         </button>
                                     </div>
                                 ) : (
-                                    <div className="space-y-4">
-                                        <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Describe your vibe (e.g., 'Heavy metal, chaos, mosh pit energy' or 'Chill beats for recovery')..." className="w-full h-32 bg-stone-900 border-2 border-stone-700 p-4 text-white focus:border-orange-500 outline-none resize-none text-xs font-mono placeholder-stone-600 transition-colors"></textarea>
-                                        {aiError && <div className="p-3 bg-red-900/20 text-red-500 text-xs font-bold border-2 border-red-900 flex gap-2"><AlertCircle size={14} /> {aiError}</div>}
-                                        <button onClick={runAIRecommend} disabled={!aiPrompt.trim() || aiLoading} className="w-full bg-white hover:bg-stone-200 text-black font-black py-3 disabled:opacity-50 flex items-center justify-center gap-2 transition-all uppercase tracking-wider border-2 border-transparent">
-                                            {aiLoading ? <Loader2 className="animate-spin" size={16} /> : <MessageSquare size={16} />} {aiLoading ? 'COMPUTING...' : 'GENERATE'}
+                                    <div className="space-y-6">
+                                        <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Describe your vibe (e.g., 'Heavy metal, chaos, mosh pit energy' or 'Chill beats for recovery')..." className="w-full h-40 bg-black border-2 border-white p-4 text-white focus:border-megaport-orange outline-none resize-none text-sm font-mono placeholder-slate-600 transition-colors shadow-hard-sm rounded-none"></textarea>
+                                        {aiError && <div className="p-4 bg-red-600 text-white text-xs font-bold border-2 border-black shadow-hard-sm flex gap-3 items-center"><AlertCircle size={20} /> {aiError}</div>}
+                                        <button onClick={runAIRecommend} disabled={!aiPrompt.trim() || aiLoading} className="w-full bg-white hover:bg-megaport-cyan hover:border-black text-black font-black py-4 disabled:opacity-50 flex items-center justify-center gap-3 transition-all uppercase tracking-wider border-2 border-transparent shadow-hard active-press">
+                                            {aiLoading ? <Loader2 className="animate-spin" size={20} /> : <MessageSquare size={20} strokeWidth={3} />} {aiLoading ? 'COMPUTING...' : 'GENERATE'}
                                         </button>
                                     </div>
                                 )}
