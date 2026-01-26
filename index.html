@@ -728,7 +728,14 @@
                             <h4 className="font-black text-white text-lg uppercase tracking-tight italic">{item.name}</h4>
                         </div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-2 font-bold font-mono uppercase tracking-widest">
-                            <span className="flex items-center gap-1"><Calendar size={12} /> {item.startDate || item.dateSaved.split('T')[0]}</span>
+                            <span className="flex items-center gap-1">
+                                <Calendar size={12} /> 
+                                {/* 修改日期顯示邏輯：優先顯示表演日期/區間，若無則顯示 PENDING，不再顯示 dateSaved */}
+                                {item.startDate 
+                                    ? (item.type === 'festival' && item.endDate && item.endDate !== item.startDate ? `${item.startDate} ~ ${item.endDate}` : item.startDate)
+                                    : "DATE PENDING"
+                                }
+                            </span>
                             <span>/</span>
                             <span>{item.performances?.length || 0} ACTS</span>
                         </div>
