@@ -34,8 +34,8 @@
             }
         }
     </script>
-    <!-- Babel for JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Babel for JSX (Fixed Version) -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
     
     <!-- Import Map -->
     <script type="importmap">
@@ -126,7 +126,8 @@
 <body class="bg-megaport-dark bg-noise text-slate-100 font-sans tracking-tight">
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
+    <!-- 修正：將 data-presets 改為 "react"，移除 "env" 以避免 require 錯誤 -->
+    <script type="text/babel" data-type="module" data-presets="react">
         import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
